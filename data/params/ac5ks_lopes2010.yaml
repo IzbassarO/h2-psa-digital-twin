@@ -14,6 +14,8 @@ physical:                       # Table 4.5, p.122
   bet_surface_area: 9.71e5      # S [m2 kg-1]  (971 m2 g-1, Table 4.3, p.116); used as S in the virial isotherm
   ldf_factor_macropore: 8       # Omega_p, cylinder particles (Table 4.7, p.123)
   ldf_factor_micropore: 3       # Omega_c, slab micropores (Table 4.7, p.123)
+  pellet_length_R2030: 6.45e-3  # [m] parent R2030 extrudates (Table 3.2 p.83; diameter 2.90 mm = 2 R_p of AC5-KS).
+                                #   NOT reported for AC5-KS; used only in the a_p diagnostic of step 2.
   tortuosity: 2.0               # tau_p ASSUMED: carried over from ch.3 (R2030, HY2SEPS; pp.102-103); not reported for AC5-KS.
                                 #   Only needed if D_p is recomputed (Table 5.9 gives D_p directly).
 
