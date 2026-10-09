@@ -358,3 +358,15 @@ Symbols: experiment; solid: final model; dashed: before the decisions; fine dots
 ![run 3](step2/run3.png)
 ![run 4](step2/run4.png)
 ![run 5](step2/run5.png)
+
+## Final decisions (project lead, 2026-10-09)
+
+* **Run-5 CH4 t10 (+20 %) and N2 t10 (+13 %) are accepted as known limitations.** N2 is flagged explicitly:
+  it is the purity-limiting impurity, and the model releases it 10-13 % late in breakthrough run 5, so purity
+  predictions are expected to be **optimistic**. Step 3 tests this directly against the PSA experiment.
+  No further breakthrough-level tuning.
+* **Thermal parameters: the assumed values are kept (option a).** The calibration was not identifiable (wall
+  term on its bound, correlation -0.94, chi2/obs 13, negligible held-out gain). Cps and the wall heat capacity
+  are sampled over their assumed ranges in the step-7 Monte Carlo instead.
+* **IAST stays a diagnostic only** (extrapolates beyond the 0-7 bar virial fits; 25x slower). The H2
+  co-adsorption band in step 3 is {taqvi_levan (baseline), noncompetitive_h2 (bound)}.
