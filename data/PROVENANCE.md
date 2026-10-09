@@ -41,6 +41,12 @@ decision 3, 2026-10-09) ended with the wall term on its lower bound (0.5 mm stai
 adopted: the `assumed:` values are still used and no `calibrated:` block exists. Details in
 `docs/validation/step2.md` (`scripts/calibrate_thermal.py`).
 
+PSA boundary conditions (step 3, 2026-10-09; `fitted:` in `compact_column_lopes2010.yaml`, `scripts/fit_psa_bcs.py`):
+the pressure-law rate constant beta_P (not reported) is fitted only to the measured cycle-1 pressure history
+(Fig. 5.18a) and the purge H2 flow (not reported) only to the H2 flow leaving during the cycle-1 purge (Fig. 5.19);
+neither uses purity or recovery. The EP inflow composition is not stated in the thesis (eq. 5.45): the gas of the
+matching ED step is used, pure H2 is the sensitivity case (`cycle_B_experiment.ep_inflow`).
+
 ## Known limitations of the data
 
 * Isotherms are fitted on 0–7 bar. In the industrial scenario (NETL, 24.5 bar) the H2 partial pressure

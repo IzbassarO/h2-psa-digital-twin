@@ -25,6 +25,14 @@ cycle_B_experiment:              # Table 5.4 p.167, Figure 5.7 p.166 (single col
   initial_state: column filled with He at feed T and P
   boundary_conditions: eq. (5.36)-(5.47) pp.178-180
   pressure_change: exponential decay with rate constant beta_P, eq. (5.39) p.178; value NOT reported
+  # ED1-3, Blow: eqs. (5.39)-(5.40); one beta_P for all exponential steps (p.180). EP3-1: eq. (5.45) gives no
+  # pressure law; the author's simulated EP pressures are exponential-shaped (Fig. 5.20a p.197), so the same law
+  # and beta_P are used. Press: linear, eq. (5.47). beta_P and the purge flow -> fitted: (below).
+  ep_inflow: ed                  # EP inflow composition, NOT stated (eq. 5.45 leaves C_inlet open; no text):
+                                 #   ed = gas collected in the matching ED step (ED1->EP1, ED2->EP2, ED3->EP3),
+                                 #   consistent with eq. (5.49), which does not charge EP gas to the product;
+                                 #   h2 = pure H2 (sensitivity). Inflows enter at the feed temperature.
+  purge_flow: "NOT reported (pure H2 at z = L); see fitted: below"
 
 performance_definitions: eq. (5.48)-(5.50) p.180   # purity, recovery, productivity
 
@@ -65,11 +73,20 @@ assumed:                         # NOT reported in the thesis — chosen by us, 
   wall_density:         {value: 8000.0, units: kg m-3, note: stainless steel}
   wall_heat_capacity:   {value: 500.0,  units: J kg-1 K-1, note: stainless steel}
   pressure_decay_rate:  {value: null,   range: [0.05, 1.0], units: s-1,
-                         note: "beta_P, eq. (5.39); to be fitted to the pressure history in Figure 5.18a"}
-  ambient_temperature:  {value: 303.0, units: K, note: column heated with flexible heater (Fig. 5.6)}
+                         note: "beta_P, eq. (5.39); fitted to the pressure history in Figure 5.18a -> fitted:"}
+  ambient_temperature:  {value: 303.0, units: K, note: "column heated with flexible heater (Fig. 5.6); PSA runs: = feed temperature (303 K; 323 K in simulations 15-17)"}
   ambient_temperature_breakthrough: {value: 323.0, units: K,
                          note: "heater set to the 323 K run temperature (pp.164, 190-191); the heater switching off at the start of each run (p.191) is not modelled"}
   particle_specific_area: {value: 2.0, range: [2.0, 3.0], units: "1/R_p",
                          note: "a_p = value / R_p. Symbol a_p defined (p.169) but no value; 2/R_p = cylindrical extrudate, consistent with Omega_p = 8"}
   he_macropore_diffusivity: {value: same_as_H2, note: "Table 5.7 gives no He value for the compact runs; He only matters while the initial He is flushed out"}
   isosteric_heat:       {value: constant, note: "(-dH)_i of the virial K_H (Table 5.5) used as the heat of adsorption in eq. (5.8); loading dependence neglected"}
+
+fitted:                          # step 3 (2026-10-09); scripts/fit_psa_bcs.py. Not used: purity, recovery, Table 5.10
+  pressure_decay_rate: {value: 0.1998, interval: [0.12, 0.5], units: s-1,
+                        data: "Fig. 5.18a cycle-1 pressure history (digitised), steps ED1-3, Blow, EP3-1",
+                        objective: "sum over the 7 steps of the mean squared pressure residual (equal step weights); interval: objective <= min x (1 + 1/6)",
+                        note: "fitted alone, ED1-3 give 4.5-9.5 s-1 and Blow, EP3-1 0.08-0.12 s-1: one constant (p.180) cannot follow both"}
+  purge_flow:          {value: 0.000261, sd: 3.9e-05, units: mol s-1,
+                        data: "Fig. 5.19 1.a, H2 molar flow leaving at z = 0 during the cycle-1 purge (3 GC samples)",
+                        objective: "least squares, baseline model (E7 kinetics, taqvi_levan, assumed thermal, group 1-4, N = 30)"}
