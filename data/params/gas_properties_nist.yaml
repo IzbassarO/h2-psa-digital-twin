@@ -1,0 +1,17 @@
+# Pure-gas properties used by the column model (molar heat capacity, viscosity, molar mass).
+# Source: NIST Chemistry WebBook, SRD 69, Thermophysical Properties of Fluid Systems
+#   (E.W. Lemmon, I.H. Bell, M.L. Huber, M.O. McLinden), isobaric data at 5 bar,
+#   https://webbook.nist.gov/chemistry/fluid/ , retrieved 2026-10-09.
+# The model uses constant properties per run, interpolated at the feed temperature
+# (Cp varies <= 6 % over 303-383 K, CO2 being the largest change).
+# Molar masses: IUPAC standard atomic weights.
+
+units: {T: K, Cp: J mol-1 K-1, viscosity: Pa s, M: kg mol-1}
+T: [303.0, 323.0, 343.0, 363.0, 383.0]
+species:
+  H2:  {M: 2.016e-3,  Cp: [28.895, 29.005, 29.084, 29.139, 29.177], viscosity: [9.0024e-6, 9.4089e-6, 9.8079e-6, 10.200e-6, 10.586e-6]}
+  CO2: {M: 44.010e-3, Cp: [38.851, 39.427, 40.054, 40.701, 41.352], viscosity: [15.189e-6, 16.145e-6, 17.087e-6, 18.014e-6, 18.927e-6]}
+  CH4: {M: 16.043e-3, Cp: [36.342, 37.093, 37.952, 38.900, 39.920], viscosity: [11.285e-6, 11.918e-6, 12.536e-6, 13.139e-6, 13.729e-6]}
+  CO:  {M: 28.010e-3, Cp: [29.390, 29.378, 29.381, 29.399, 29.431], viscosity: [18.050e-6, 18.945e-6, 19.816e-6, 20.665e-6, 21.493e-6]}
+  N2:  {M: 28.014e-3, Cp: [29.349, 29.330, 29.323, 29.327, 29.343], viscosity: [18.080e-6, 18.981e-6, 19.859e-6, 20.714e-6, 21.550e-6]}
+  He:  {M: 4.0026e-3, Cp: [20.787, 20.786, 20.786, 20.786, 20.786], viscosity: [20.080e-6, 20.977e-6, 21.860e-6, 22.729e-6, 23.585e-6]}

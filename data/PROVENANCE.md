@@ -11,6 +11,7 @@ rendered PDF pages (~580 values, 2026-10-09).
 | Lopes2010 | F.V.S. Lopes, *New pressure swing adsorption cycles for hydrogen purification from steam reforming off-gases*, PhD thesis, University of Porto, 2010. doi:10.34626/ftfe-yr63, hdl:10216/61875 | Open access | Isotherms, kinetics, column, PSA experiment and 17 reference simulations |
 | NETL2022 | NETL, *Comparison of Commercial, State-of-the-Art, Fossil-Based Hydrogen Production Technologies*, DOE/NETL-2022/3241, 2022 | Public | Industrial PSA feed/product/tail gas (Exhibit 3-4) |
 | Yang2008 | S. Yang et al., *Hydrogen purification by the four-bed PSA process from SMR off-gas*, KNRES autumn conf. 2008, pp. 383-386 | Open access (KoreaScience) | Layered-bed geometry, cycle, experimental trends |
+| NIST | E.W. Lemmon et al., *Thermophysical Properties of Fluid Systems*, NIST Chemistry WebBook, SRD 69, https://webbook.nist.gov/chemistry/fluid/ (retrieved 2026-10-09) | Public | Gas heat capacities and viscosities at 5 bar, 303-383 K (`gas_properties_nist.yaml`) |
 
 Thesis page numbers in the YAML files are **printed** page numbers; PDF page = printed + 34.
 
@@ -29,7 +30,9 @@ Thesis page numbers in the YAML files are **printed** page numbers; PDF page = p
 
 Listed under `assumed:` in `compact_column_lopes2010.yaml`: solid heat capacity, wall thickness,
 wall density and heat capacity, pressure-change rate constant βP (to be fitted to Fig. 5.18a),
-ambient temperature. AC5-KS tortuosity (τp = 2) is carried over from chapter 3.
+ambient temperature (303 K PSA, 323 K breakthrough runs), particle specific area a_p = 2/R_p,
+He macropore diffusivity (= H2, compact runs), constant isosteric heat (−ΔH of the virial K_H).
+AC5-KS tortuosity (τp = 2) is carried over from chapter 3.
 
 ## Known limitations of the data
 

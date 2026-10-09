@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import yaml
@@ -117,6 +118,42 @@ class Virial:
         out.update(zip(names, np.exp(lnq)))
         return out
 
+    def equilibrium(self, P: np.ndarray, T: np.ndarray) -> np.ndarray:
+        """Vectorised mixture loadings for many states at once (the column model's interface).
+
+        P: (n, k) partial pressures [bar] in self.names order; T: (n,) [K]. Returns q (n, k) [mol/kg].
+        Damped Newton in ln q with the analytic Jacobian; the last solution is kept as warm start
+        (consecutive calls from the ODE solver differ only slightly).
+        """
+        sp = [self.species[n] for n in self.names]
+        T = np.asarray(T, float)[:, None]
+        lnK = np.log([s.K_inf for s in sp]) + np.array([s.minus_dH for s in sp]) * 1e3 / (R * T)
+        A = np.array([s.A0 for s in sp]) + np.array([s.A1 for s in sp]) / T
+        B = np.array([s.B0 for s in sp]) + np.array([s.B1 for s in sp]) / T
+        lnP = np.log(np.maximum(P, 1e-14))
+        S = self.S
+        x = getattr(self, "_x_last", None)
+        if x is None or x.shape != lnP.shape:
+            x = lnK + lnP - 1.0
+        eye = np.eye(lnP.shape[1])
+        for _ in range(100):
+            q = np.exp(x)
+            Q = q.sum(1, keepdims=True)
+            a = (A * q).sum(1, keepdims=True)
+            b = (B * q).sum(1, keepdims=True)
+            r = x - lnK + (A * Q + a) / S + (B * Q**2 + 2 * Q * b) / (2 * S**2) - lnP
+            J = eye + q[:, None, :] * ((A[:, :, None] + A[:, None, :]) / S
+                                       + (B[:, :, None] * Q[:, :, None] + b[:, :, None] + Q[:, :, None] * B[:, None, :]) / S**2)
+            dx = np.linalg.solve(J, -r[..., None])[..., 0]
+            dx *= 2.0 / np.maximum(np.abs(dx).max(1, keepdims=True), 2.0)  # step limit 2 in ln q
+            x = x + dx
+            if np.abs(dx).max() < 1e-11:
+                break
+        else:
+            raise RuntimeError("virial equilibrium did not converge")
+        self._x_last = x
+        return np.exp(x)
+
 
 # --------------------------------------------------------------------------- multisite Langmuir
 @dataclass(frozen=True)
@@ -160,3 +197,39 @@ class MultisiteLangmuir:
 
         th = fsolve(resid, np.full(len(names), 1e-3), xtol=1e-13)
         return {n: th[i] * sp[i].q_max for i, n in enumerate(names)}
+
+    def equilibrium(self, P: np.ndarray, T: np.ndarray) -> np.ndarray:
+        """Vectorised: P (n, k) [bar] in self.names order, T (n,) [K] -> q (n, k) [mol/kg].
+
+        With s = 1 - sum(theta): theta_i = a_i K_i P_i s^a_i, so s solves the monotone scalar equation
+        f(s) = s - 1 + sum_i a_i K_i P_i s^a_i = 0 on (0, 1]; safeguarded Newton per state.
+        """
+        sp = [self.species[n] for n in self.names]
+        T = np.asarray(T, float)[:, None]
+        a = np.array([s.a for s in sp])
+        c = a * np.array([s.K_inf for s in sp]) * np.exp(np.array([s.minus_dH for s in sp]) * 1e3 / (R * T)) \
+            * np.maximum(P, 0.0) * 100.0
+        lo, hi, s = np.zeros(len(T)), np.ones(len(T)), np.ones(len(T))
+        for _ in range(100):
+            f = s - 1 + (c * s[:, None] ** a).sum(1)
+            lo, hi = np.where(f < 0, s, lo), np.where(f >= 0, s, hi)
+            fp = 1 + (c * a * s[:, None] ** (a - 1)).sum(1)
+            sn = s - f / fp
+            sn = np.where((sn <= lo) | (sn >= hi), 0.5 * (lo + hi), sn)
+            if np.abs(sn - s).max() < 1e-14:
+                s = sn
+                break
+            s = sn
+        return np.array([s_.q_max for s_ in sp]) * c * s[:, None] ** a
+
+
+class Linear:
+    """q_i = K_i P_i (isothermal test isotherm, K in mol kg-1 bar-1)."""
+
+    def __init__(self, K: dict[str, float], minus_dH: float = 0.0):
+        self.names = list(K)
+        self.K = np.array(list(K.values()))
+        self.species = {n: SimpleNamespace(minus_dH=minus_dH) for n in K}
+
+    def equilibrium(self, P: np.ndarray, T: np.ndarray) -> np.ndarray:
+        return self.K * P

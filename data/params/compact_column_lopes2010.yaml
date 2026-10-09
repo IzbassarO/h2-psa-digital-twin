@@ -35,6 +35,29 @@ model:                           # pp.167-174
   correlations: Wakao-Funazkri eq. (5.20)-(5.23); Wasch-Froment hw eq. (5.31); Churchill-Chu eq. (5.32)
   original_solver: gPROMS, orthogonal collocation on finite elements, 40 elements, 2 interior points, tol 1e-5
 
+breakthrough_runs:               # fixed-bed breakthrough curves in the compact unit, AC5-KS
+  source: Table 5.3 p.165 (conditions), Table 5.7 p.175 (transport parameters of the author's simulations)
+  data: Figures 5.15 (runs 1-3) p.188, 5.16 (run 4) p.189, 5.17 (run 5) p.190 -> data/benchmarks/digitized/
+  feed_temperature: 323.0        # [K]
+  pressure_bar: 5.0              # kept constant with a back-pressure regulator (p.164)
+  flow_rate_std: 5.00e-5         # [m3 s-1] at std_conditions
+  std_conditions: {T: 298.0, P_bar: 1.0}   # "measured at 298 K and 1 bar" (Table 5.3 footnote)
+  initial_state: column filled with He at feed T and P   # eq. (5.16) p.171
+  # micropore Dc0/rc2 and Ea printed in Table 5.7 are identical to Table 5.9
+  #   -> ac5ks_lopes2010.yaml psa_transport.micropore (errata E3 applies)
+  units: {Dax: m2 s-1, lambda: J s-1 m-1 K-1, kf: m s-1, hf: J s-1 m-2 K-1, hw: J s-1 m-2 K-1, U: J s-1 m-2 K-1, Dp: m2 s-1}
+  runs:
+    1: {y: {H2: 0.70, CO2: 0.30}, Dax: 1.46e-5, lambda: 0.766, kf: 1.83e-2, hf: 123, hw: 55, U: 50,
+        Dp: {H2: 7.36e-6, CO2: 7.36e-6}}
+    2: {y: {H2: 0.90, CO2: 0.10}, Dax: 1.46e-5, lambda: 1.109, kf: 1.69e-2, hf: 161, hw: 55, U: 50,
+        Dp: {H2: 7.36e-6, CO2: 7.36e-6}}
+    3: {y: {H2: 0.20, CO2: 0.80}, Dax: 1.46e-5, lambda: 0.296, kf: 2.04e-2, hf: 57, hw: 55, U: 50,
+        Dp: {H2: 7.36e-6, CO2: 7.36e-6}}
+    4: {y: {H2: 0.70, CO2: 0.26, CO: 0.04}, Dax: 1.37e-5, lambda: 0.778, kf: 1.53e-2, hf: 125, hw: 55, U: 50,
+        Dp: {H2: 7.54e-6, CO2: 6.29e-6, CO: 4.26e-6}}
+    5: {y: {H2: 0.73, CO2: 0.23, CH4: 0.021, CO: 0.012, N2: 0.007}, Dax: 1.33e-5, lambda: 0.823, kf: 1.40e-2, hf: 130, hw: 55, U: 50,
+        Dp: {H2: 7.51e-6, CO2: 6.40e-6, CO: 4.43e-6, CH4: 4.56e-6, N2: 4.38e-6}}
+
 assumed:                         # NOT reported in the thesis — chosen by us, varied in sensitivity analysis
   solid_heat_capacity:  {value: 880.0,  range: [700.0, 1100.0], units: J kg-1 K-1,
                          note: "typical for activated carbon pellets; thesis lists symbol Cp,s but no value"}
@@ -44,3 +67,9 @@ assumed:                         # NOT reported in the thesis — chosen by us, 
   pressure_decay_rate:  {value: null,   range: [0.05, 1.0], units: s-1,
                          note: "beta_P, eq. (5.39); to be fitted to the pressure history in Figure 5.18a"}
   ambient_temperature:  {value: 303.0, units: K, note: column heated with flexible heater (Fig. 5.6)}
+  ambient_temperature_breakthrough: {value: 323.0, units: K,
+                         note: "heater set to the 323 K run temperature (pp.164, 190-191); the heater switching off at the start of each run (p.191) is not modelled"}
+  particle_specific_area: {value: 2.0, range: [2.0, 3.0], units: "1/R_p",
+                         note: "a_p = value / R_p. Symbol a_p defined (p.169) but no value; 2/R_p = cylindrical extrudate, consistent with Omega_p = 8"}
+  he_macropore_diffusivity: {value: same_as_H2, note: "Table 5.7 gives no He value for the compact runs; He only matters while the initial He is flushed out"}
+  isosteric_heat:       {value: constant, note: "(-dH)_i of the virial K_H (Table 5.5) used as the heat of adsorption in eq. (5.8); loading dependence neglected"}
