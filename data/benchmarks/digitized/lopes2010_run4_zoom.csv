@@ -1,0 +1,30 @@
+# Lopes (2010) Figure 5.16, printed p.189, PDF p.223; compact unit run4, panel 'zoom'
+# outlet molar flow per species; experimental symbols only (simulation lines excluded)
+# method: vector extraction of symbol centres from the PDF paths (scripts/digitize_lopes2010.py)
+# axes: time 0-1500 s, molar_flow_mmol_s 0-0.16 1e-3 mol s-1
+# read-off uncertainty: time +-0.5 s, value +-5.9e-05 1e-3 mol s-1 (coordinate quantisation 0.06 pt and tick-label fit residual); symbols overlapping in the figure cannot be separated
+series,time_s,molar_flow_mmol_s
+CO,199.3,0.00024085
+CO,238.9,0.0048945
+CO,288.8,0.047607
+CO,328.5,0.08943
+CO,368.2,0.11587
+CO,407.8,0.12227
+CO,497.4,0.12458
+CO,597.8,0.13099
+CO,647.7,0.12052
+CO,684.6,0.10075
+CO,719.2,0.079827
+CO,758.6,0.079264
+CO,816.6,0.077515
+CO,998.7,0.078967
+CO,1207.2,0.080419
+CO2,199.0,0.00024085
+CO2,238.7,0.00024085
+CO2,288.8,0.00024085
+CO2,328.5,0.00024085
+CO2,367.9,0.00024085
+CO2,407.6,0.00024085
+CO2,497.4,0.00024085
+CO2,597.8,0.0019897
+CO2,647.9,0.025791
