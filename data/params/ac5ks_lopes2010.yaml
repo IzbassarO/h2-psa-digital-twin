@@ -19,6 +19,9 @@ physical:                       # Table 4.5, p.122
 
 isotherm:
   model: virial                 # eq. (2.5)-(2.9) p.34; multicomponent Taqvi & LeVan, eq. (5.1)-(5.2) p.167
+  mixing: taqvi_levan           # mixture rule: taqvi_levan (published, default) | iast (IAST on the pure virial
+                                #   isotherms) | noncompetitive_h2 (bound: H2 from its pure isotherm). Decision 2026-10-09:
+                                #   all three are carried as an uncertainty band; none is chosen by matching the PSA result.
   # P_i[bar] = q_i/K_H,i * exp( 2/S * sum_j A_ij q_j + 3/(2 S^2) * sum_j sum_k B_ijk q_j q_k )
   # K_H = K_inf * exp(-dH/(R T)) ; A = A0 + A1/T ; B = B0 + B1/T
   # A_ij = (A_i + A_j)/2 ; B_ijk = (B_i + B_j + B_k)/3
