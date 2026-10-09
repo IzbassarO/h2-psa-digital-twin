@@ -1,4 +1,5 @@
-"""Extract the compact-unit breakthrough data (Lopes 2010, Figs 5.15-5.17) from the thesis PDF.
+"""Extract the compact-unit breakthrough data (Lopes 2010, Figs 5.15-5.17) and the PSA experiment
+(Figs 5.18-5.19) from the thesis PDF.
 
 The figures are vector graphics (Excel EMF -> PDF), so every experimental symbol is a path object.
 Marker centres are taken from the path geometry and mapped to data units with a linear fit to the
@@ -38,7 +39,16 @@ FIGURES = [
     ("5.16", 189, [("run4", "flow"), ("run4", "zoom"), ("run4", "T")]),
     ("5.17", 190, [("run5", "flow"), ("run5", "zoom"), ("run5", "T")]),
 ]
-LEGEND_WORDS = {"CO2", "H2", "CO", "CH4", "N2", "Bottom", "Middle", "Top"}
+LEGEND_WORDS = {"CO2", "H2", "CO", "CH4", "N2", "Bottom", "Middle", "Top", "Pressure"}
+CYCLE = 459.0  # s, PSA experiment cycle time (Table 5.4); x axis of Fig 5.18b is in cycles
+# PSA experiment: figure, printed page, panels (name, kind); temperature frames hold three stacked
+# sub-panels (Top, Middle, Bottom) with their own tick labels
+PSA_FIGURES = [
+    ("5.18", 192, [("psa_c1", "P"), ("psa_c1-10", "T")]),
+    ("5.19", 193, [("psa_c1", "flow"), ("psa_c37", "flow"), ("psa_c1", "zoom"), ("psa_c37", "zoom"),
+                   ("psa_c1", "T"), ("psa_c37", "T")]),
+]
+STACK = ["Top", "Middle", "Bottom"]
 
 
 def subpaths(dr):
@@ -113,6 +123,8 @@ def line_vertices(page):
         sps = subpaths(dr)
         if all(len(sp) <= 5 for sp in sps):
             continue  # x / + symbol groups
+        if np.mean([max(p.x for p in sp) - min(p.x for p in sp) < 1.0 for sp in sps]) > 0.9:
+            continue  # dotted vertical step-boundary lines (PSA figures)
         out.setdefault(col, []).extend((p.x, p.y) for sp in sps for p in sp)
     return {c: np.array(v) for c, v in out.items()}
 
@@ -139,7 +151,7 @@ def axis_fit(words, fr):
         cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
         if fr.y1 < y0 < fr.y1 + 20 and fr.x0 - 15 < cx < fr.x1 + 15:
             xl.append((cx, v))
-        elif fr.x0 - 35 < x1 < fr.x0 + 1 and fr.y0 - 8 < cy < fr.y1 + 8:
+        elif fr.x0 - 35 < x1 < fr.x0 + 1 and fr.y0 - 8 < cy < fr.y1 + 8 and x1 > fr.x0 - 12:  # tick labels, not the axis title
             yl.append((cy, v))
     fits = []
     for lab in (xl, yl):
@@ -147,6 +159,23 @@ def axis_fit(words, fr):
         b, a = np.polyfit(lab[:, 0], lab[:, 1], 1)
         resid = np.max(np.abs(a + b * lab[:, 0] - lab[:, 1]))
         fits.append((a, b, resid, lab[:, 1].min(), lab[:, 1].max()))
+    return fits
+
+
+def stacked_y_fits(words, fr):
+    """Per sub-panel (top to bottom) linear y maps for a frame with stacked panels: tick labels are read
+    top to bottom and a new sub-panel starts wherever the value increases."""
+    lab = sorted(((w[1] + w[3]) / 2, float(w[4])) for w in words
+                 if w[4].replace(".", "").isdigit() and fr.x0 - 35 < w[2] < fr.x0 + 1 and fr.y0 - 8 < (w[1] + w[3]) / 2 < fr.y1 + 8)
+    groups = [[lab[0]]]
+    for a in lab[1:]:
+        (groups[-1] if a[1] < groups[-1][-1][1] else groups.append([]) or groups[-1]).append(a)
+    fits = []
+    for g in groups:
+        g = np.array(g)
+        b, a = np.polyfit(g[:, 0], g[:, 1], 1)
+        fits.append((a, b, np.max(np.abs(a + b * g[:, 0] - g[:, 1])), g[:, 1].min(), g[:, 1].max()))
+    assert len(fits) == 3, fits
     return fits
 
 
@@ -231,5 +260,66 @@ def main():
             print(f"  {fn.name}: { {n: sum(r[0] == n for r in sim) for n in sorted({r[0] for r in sim})} }")
 
 
+def psa():
+    """PSA experiment, Figs 5.18-5.19: symbols and author simulation lines, as for the breakthrough runs."""
+    doc = pymupdf.open(PDF)
+    for fig, printed, panels in PSA_FIGURES:
+        page = doc[printed + 34 - 1]
+        words = page.get_text("words")
+        marks, lines, frs = marker_centres(page), line_vertices(page), frames(page)
+        assert len(frs) == len(panels), (fig, len(frs))
+        for (name, kind), fr in zip(panels, frs):
+            (ax, bx, rx, x_lo, x_hi), yfit = axis_fit(words, fr)
+            yfits = stacked_y_fits(words, fr) if kind == "T" else [yfit] * 3
+            xs = CYCLE if name.endswith("c1-10") else 1.0       # cycles -> s
+            label = {"P": lambda c: "Pressure" if c == (0.01, 0.02, 0.02) else None,
+                     "T": lambda c: COLOURS[c][1]}.get(kind, lambda c: COLOURS[c][0])
+
+            def to_data(series, x, y):
+                ay, by = yfits[STACK.index(series)][:2] if kind == "T" else yfit[:2]
+                return series, (ax + bx * x) * xs, ay + by * y
+
+            rows = []
+            for col, by_kind in marks.items():
+                series = label(col)
+                if series is None:
+                    continue
+                sel = {}
+                for k, xy in by_kind.items():
+                    inside = (xy[:, 0] > fr.x0 - 2) & (xy[:, 0] < fr.x1 + 2) & (xy[:, 1] > fr.y0 - 2) & (xy[:, 1] < fr.y1 + 2)
+                    sel[k] = xy[inside & ~legend_mask(words, fr, xy)]
+                xy = sel.get("fill") if len(sel.get("fill", ())) else sel.get("outline", np.empty((0, 2)))
+                xy = np.vstack([xy, sel.get("stroke", np.empty((0, 2)))])
+                rows += [to_data(series, x, y) for x, y in xy]
+            sim = []
+            for col, xy in lines.items():
+                series = label(col)
+                if series is None:
+                    continue
+                xy = xy[(xy[:, 0] >= fr.x0) & (xy[:, 0] <= fr.x1) & (xy[:, 1] >= fr.y0) & (xy[:, 1] <= fr.y1)]
+                sim += [to_data(series, x, y) for x, y in np.unique(xy.round(3), axis=0)]
+            rows.sort(), sim.sort()
+            head, unit = {"P": ("pressure_bar", "bar"), "T": ("temperature_K", "K")}.get(kind, ("molar_flow_mmol_s", "1e-3 mol s-1"))
+            ut = max(abs(bx) * QUANT, rx) * xs
+            uy = max(max(abs(f[1]) * QUANT, f[2]) for f in yfits)
+            desc = {"P": "pressure history, cycle 1",
+                    "T": "Bottom (z=0.059 m), Middle (z=0.151 m), Top (z=0.239 m); " +
+                         ("cycles 1-10, time = cycle number x 459 s" if xs != 1 else "time within the cycle"),
+                    "flow": "bed outlet molar flow per species", "zoom": "bed outlet molar flow, zoomed low range"}[kind]
+            for data, tag, what in ((rows, "", "experimental symbols only (simulation lines excluded)"),
+                                    (sim, "_authorsim", "the AUTHOR'S SIMULATION lines (gPROMS), not experimental data")):
+                fn = OUT / f"lopes2010_{name}_{kind}{tag}.csv"
+                with open(fn, "w") as fh:
+                    fh.write(f"# Lopes (2010) Figure {fig}, printed p.{printed}, PDF p.{printed + 34}; PSA experiment, panel '{kind}' ({name})\n")
+                    fh.write(f"# {desc}; {what}\n")
+                    fh.write("# method: vector extraction from the PDF paths (scripts/digitize_lopes2010.py)\n")
+                    fh.write(f"# read-off uncertainty: time +-{ut:.1f} s, value +-{uy:.2g} {unit}\n")
+                    fh.write(f"series,time_s,{head}\n")
+                    for series, t, v in data:
+                        fh.write(f"{series},{t:.1f},{v:.5g}\n")
+                print(f"{fn.name}: { {n: sum(r[0] == n for r in data) for n in sorted({r[0] for r in data})} }")
+
+
 if __name__ == "__main__":
     main()
+    psa()
