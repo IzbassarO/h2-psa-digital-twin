@@ -10,6 +10,8 @@ where surrogate error is largest. We replace the point constraint with a conform
 ## Roadmap
 
 The 7 steps in `README.md`. A step's gate must pass before the next step starts.
+Every step's final gate report goes into git as `docs/validation/stepN.md` (a copy of the generated
+`results/stepN/REPORT.md`) with its figures in `docs/validation/stepN/`; `results/` itself stays ignored.
 
 ## Setup
 

@@ -33,7 +33,13 @@ Listed under `assumed:` in `compact_column_lopes2010.yaml`: solid heat capacity,
 wall density and heat capacity, pressure-change rate constant βP (to be fitted to Fig. 5.18a),
 ambient temperature (303 K PSA, 323 K breakthrough runs), particle specific area a_p = 2/R_p,
 He macropore diffusivity (= H2, compact runs), constant isosteric heat (−ΔH of the virial K_H).
-AC5-KS tortuosity (τp = 2) is carried over from chapter 3.
+AC5-KS tortuosity (τp = 2) is carried over from chapter 3. The pellet length of the parent R2030 extrudates
+(6.45 mm, Table 3.2) is stored for a diagnostic only; no AC5-KS length is reported, so a_p stays 2/R_p.
+
+A calibration of the solid heat capacity and the lumped wall heat capacity on breakthrough runs 1-3 (step 2,
+decision 3, 2026-10-09) ended with the wall term on its lower bound (0.5 mm stainless steel), so it was not
+adopted: the `assumed:` values are still used and no `calibrated:` block exists. Details in
+`docs/validation/step2.md` (`scripts/calibrate_thermal.py`).
 
 ## Known limitations of the data
 
@@ -43,13 +49,22 @@ AC5-KS tortuosity (τp = 2) is carried over from chapter 3.
   (HY2SEPS-AC + HY2SEPS-ZEO) is validated component-wise, plus qualitative trends from Yang2008.
 * Loadings used in check C1 are read off Figures 4.9–4.10 (±5 %).
 
-## Open issues carried into step 2
+## Open issues
 
 * **H2 in mixtures (AC5-KS virial).** The H2 virial coefficient B is very large (B1 = 7315.4e11 m⁴ K mol⁻²),
   fitted where pure-H2 loadings are tiny. Through the Taqvi–LeVan mixing rule B_ijk = (B_i+B_j+B_k)/3, it
   pushes predicted H2 co-adsorption close to zero once CO2 is loaded (e.g. 4e-4 mol/kg at 5 bar feed vs
   0.012 mol/kg at 0.5 bar). H2 co-adsorption controls H2 lost in blowdown, so this directly biases recovery.
-  Step 2 tests it against the measured H2–CO2 binary breakthrough curves (Table 5.3, runs 1–3) before use.
+  Step 2 tested it against the H2–CO2 binary breakthrough curves (runs 1–3): the data cannot distinguish the
+  mixture rules (effect on the outlet H2 flow a few per cent, comparable to the flow-measurement offset).
+  Decision (2026-10-09): the rule is selectable (`isotherm.mixing`: `taqvi_levan` default, `iast`,
+  `noncompetitive_h2`) and all three are carried into step 3 as an uncertainty band; none is selected by
+  matching the PSA result.
+* **IAST on the virial fits.** The pure virial isotherms of CO, CH4 and N2 have a pressure maximum at
+  11–25 bar (beyond the 0–7 bar fit), so their reduced spreading pressure is bounded (N2 2.33, CO 3.95,
+  CH4 5.47 mol/kg at 323 K). IAST needs these pure states whenever CO2 is loaded; above the bound the pure
+  isotherm is continued at constant (saturated) loading. IAST loadings of the weak species are therefore an
+  extrapolation of the fits.
 
 ## Licence
 
