@@ -245,35 +245,46 @@ class Virial:
         """Damped Newton in ln q from the last solution. Cold start (or failure): continuation in the pressure
         level from the Henry limit, because Newton from a poor guess can cycle when H2, with its large B,
         sits many decades below its Henry loading."""
-        x = getattr(self, "_x_last", None)
-        if x is not None and x.shape == lnP.shape:
+        cache = self.__dict__.setdefault("_x_cache", {})     # last solution per array shape (single / batched calls)
+        x = cache.get(lnP.shape)
+        if x is None:                                        # a batch of states like a cached single one
+            x = next((np.tile(v, (lnP.shape[0] // v.shape[0], 1)) for v in cache.values()
+                      if v.shape[1] == lnP.shape[1] and lnP.shape[0] % v.shape[0] == 0), None)
+        if x is not None:
             try:
-                self._x_last = self._tl_newton(lnP, lnK, A, B, x)
-                return np.exp(self._x_last)
+                cache[lnP.shape] = self._tl_newton(lnP, lnK, A, B, x)
+                return np.exp(cache[lnP.shape])
             except RuntimeError:
                 pass
         x = lnK + lnP - 9.0 * np.log(10)
         for s in np.linspace(-9.0, 0.0, 19) * np.log(10):
             x = self._tl_newton(lnP + s, lnK, A, B, x)
-        self._x_last = x
+        cache[lnP.shape] = x
         return np.exp(x)
 
     def _tl_newton(self, lnP, lnK, A, B, x):
+        """Newton on r(ln q) = 0 (eq. 5.1 in log form). The Jacobian is I + a q^T + 1 w^T (rank 2), so each
+        step is a closed-form Woodbury solve; stops when the residual is below 1e-11."""
         S = self.S
-        eye = np.eye(lnP.shape[1])
         for _ in range(100):
             q = np.exp(x)
             Q = q.sum(1, keepdims=True)
             a = (A * q).sum(1, keepdims=True)
             b = (B * q).sum(1, keepdims=True)
             r = x - lnK + (A * Q + a) / S + (B * Q**2 + 2 * Q * b) / (2 * S**2) - lnP
-            J = eye + q[:, None, :] * ((A[:, :, None] + A[:, None, :]) / S
-                                       + (B[:, :, None] * Q[:, :, None] + b[:, :, None] + Q[:, :, None] * B[:, None, :]) / S**2)
-            dx = np.linalg.solve(J, -r[..., None])[..., 0]
+            if np.abs(r).max() < 1e-11:
+                return x
+            # J_ij = d_ij + al_i q_j + w_j,  al = A/S + (B Q + b)/S^2,  w = q (A/S + Q B/S^2)
+            al = A / S + (B * Q + b) / S**2
+            w = q * (A / S + Q * B / S**2)
+            # (I + U V^T)^-1 r = r - U (I + V^T U)^-1 V^T r,  U = [al, 1], V = [q, w]
+            m11 = 1 + (q * al).sum(1); m12 = Q[:, 0]; m21 = (w * al).sum(1); m22 = 1 + w.sum(1)
+            v1, v2 = (q * r).sum(1), (w * r).sum(1)
+            det = m11 * m22 - m12 * m21
+            c1, c2 = (m22 * v1 - m12 * v2) / det, (m11 * v2 - m21 * v1) / det
+            dx = -(r - al * c1[:, None] - c2[:, None])
             dx *= 2.0 / np.maximum(np.abs(dx).max(1, keepdims=True), 2.0)  # step limit 2 in ln q
             x = x + dx
-            if np.abs(dx).max() < 1e-11:
-                return x
         raise RuntimeError("virial equilibrium did not converge")
 
 
