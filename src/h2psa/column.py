@@ -21,6 +21,7 @@ from scipy.integrate import solve_ivp
 from scipy.sparse import coo_matrix, csc_matrix
 
 from .isotherms import R, Virial, load_yaml
+from .kinetics import arrhenius_fit
 
 PARAMS = Path(__file__).resolve().parents[2] / "data" / "params"
 _DELTA = 1e-10  # van Leer smoothing (Haghpanah et al., 2013)
@@ -50,9 +51,8 @@ class Layer:
 @dataclass
 class Column:
     d_wi: float        # internal diameter, m
-    e_wall: float      # wall thickness, m
-    rho_w: float       # wall density, kg m-3
-    Cpw: float         # wall heat capacity, J kg-1 K-1
+    e_wall: float      # wall thickness, m (heat-exchange geometry only)
+    Cw: float          # wall heat capacity per unit length, rho_w Cp_w pi e (d_wi + e), J m-1 K-1
     Dax: float         # axial mass dispersion, m2 s-1
     lam: float         # axial heat dispersion, W m-1 K-1
     hw: float          # gas-wall film coefficient, W m-2 K-1
@@ -181,6 +181,7 @@ class ColumnModel:
         d, e = col.d_wi, col.e_wall
         self.alpha_w = d / (e * (d + e))
         self.alpha_wl = 1 / ((d + e) * np.log((d + e) / d))
+        self.rhoCp_w = col.Cw / (np.pi * e * (d + e))   # rho_w Cp_w of eq. (5.11) from the lumped wall term
 
         yf = np.array([feed.y.get(s, 0.0) for s in species])
         self.y_feed = yf / yf.sum()
@@ -281,7 +282,7 @@ class ColumnModel:
             dTp = ((1 - eps) * self.eps_p * R * Tp * dCm.sum(0)
                    + (1 - eps) * self.rho_p * (self.dH * dq).sum(0) + hgs) / cap      # (5.8)
             dTw = (self.alpha_w * col.hw * (Tg - Tw)
-                   - self.alpha_wl * col.U * (Tw - col.T_amb)) / (col.rho_w * col.Cpw)  # (5.11)
+                   - self.alpha_wl * col.U * (Tw - col.T_amb)) / self.rhoCp_w           # (5.11)
 
         ddP = R * (Tg * dC.sum(0) + CT * dTg)                                     # P = C_T R Tg
         return np.concatenate([dC[:-1].ravel(), ddP, dCm.ravel(), dq.ravel(), dTg, dTp, dTw,
@@ -363,24 +364,39 @@ class ColumnModel:
 
 
 # ---------------------------------------------------------------------- builders
-def compact_breakthrough(run: int, N: int = 60, **kw) -> ColumnModel:
-    """Compact-unit breakthrough run 1-5 on AC5-KS (Lopes 2010, Tables 5.3 and 5.7), bed initially full of He."""
+def compact_breakthrough(run: int, N: int = 60, *, mixing: str | None = None, measured_kinetics=None,
+                         thermal: str | None = None, **kw) -> ColumnModel:
+    """Compact-unit breakthrough run 1-5 on AC5-KS (Lopes 2010, Tables 5.3 and 5.7), bed initially full of He.
+
+    mixing: virial mixture rule (None: `isotherm.mixing` in ac5ks_lopes2010.yaml).
+    measured_kinetics: species whose micropore constants are the Arrhenius refit of Table 4.10 instead of
+        Table 5.7 (None: `psa_transport.micropore_use_measured`, errata E7).
+    thermal: "calibrated" | "assumed" solid and wall heat capacities (None: calibrated if the YAML has them).
+    """
     cc = load_yaml(PARAMS / "compact_column_lopes2010.yaml")
     ac = load_yaml(PARAMS / "ac5ks_lopes2010.yaml")
     bt, asm, cg = cc["breakthrough_runs"], cc["assumed"], cc["column"]
     r = bt["runs"][run]
-    ph, mic = ac["physical"], ac["psa_transport"]["micropore"]
+    ph, tr = ac["physical"], ac["psa_transport"]
     species = list(r["y"]) + ["He"]
+    mic = {k: (v["Dc0_over_rc2"], v["Ea"]) for k, v in tr["micropore"].items()}
+    for s in tr["micropore_use_measured"] if measured_kinetics is None else measured_kinetics:
+        mic[s] = arrhenius_fit(ac["micropore_kinetics_breakthrough"][s]["Dc_over_rc2"])
+    thermal = thermal or ("calibrated" if "calibrated" in cc else "assumed")
+    d, e = cg["internal_diameter"], asm["wall_thickness"]["value"]
+    if thermal == "calibrated":
+        Cps, Cw = cc["calibrated"]["solid_heat_capacity"]["value"], cc["calibrated"]["wall_heat_capacity_per_length"]["value"]
+    else:
+        Cps = asm["solid_heat_capacity"]["value"]
+        Cw = asm["wall_density"]["value"] * asm["wall_heat_capacity"]["value"] * np.pi * e * (d + e)
     layer = Layer(
-        length=cg["bed_height"], eps=cg["bed_porosity"], iso=Virial.from_yaml(PARAMS / "ac5ks_lopes2010.yaml"),
+        length=cg["bed_height"], eps=cg["bed_porosity"], iso=Virial.from_yaml(PARAMS / "ac5ks_lopes2010.yaml", mixing),
         rho_p=ph["particle_density"], eps_p=ph["pellet_porosity"], Rp=ph["pellet_radius"],
         Omega_m=ph["ldf_factor_macropore"], Omega_c=ph["ldf_factor_micropore"],
-        Cps=asm["solid_heat_capacity"]["value"], a_p=asm["particle_specific_area"]["value"] / ph["pellet_radius"],
+        Cps=Cps, a_p=asm["particle_specific_area"]["value"] / ph["pellet_radius"],
         kf=r["kf"], hf=r["hf"], Dp={**r["Dp"], "He": r["Dp"]["H2"]},
-        Dc0={k: v["Dc0_over_rc2"] for k, v in mic.items()}, Ea={k: v["Ea"] for k, v in mic.items()})
-    col = Column(d_wi=cg["internal_diameter"], e_wall=asm["wall_thickness"]["value"],
-                 rho_w=asm["wall_density"]["value"], Cpw=asm["wall_heat_capacity"]["value"],
-                 Dax=r["Dax"], lam=r["lambda"], hw=r["hw"], U=r["U"],
+        Dc0={k: v[0] for k, v in mic.items()}, Ea={k: v[1] for k, v in mic.items()})
+    col = Column(d_wi=d, e_wall=e, Cw=Cw, Dax=r["Dax"], lam=r["lambda"], hw=r["hw"], U=r["U"],
                  T_amb=asm["ambient_temperature_breakthrough"]["value"], layers=[layer])
     std = bt["std_conditions"]
     flow = std["P_bar"] * 1e5 * bt["flow_rate_std"] / (R * std["T"])

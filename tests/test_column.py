@@ -4,7 +4,8 @@ from pathlib import Path
 import numpy as np
 
 from h2psa.column import compact_breakthrough
-from h2psa.isotherms import MultisiteLangmuir, Virial
+from h2psa.isotherms import MultisiteLangmuir, Virial, load_yaml
+from h2psa.kinetics import arrhenius_fit
 from h2psa.validation import breakthrough_times, linear_isothermal_model, stoichiometric_time
 
 P = Path(__file__).resolve().parents[1] / "data" / "params"
@@ -30,6 +31,17 @@ def test_msl_equilibrium_matches_scalar_solver():
     q = m.equilibrium(np.array([[y[n] * 5.0 for n in m.names]]), np.array([323.0]))[0]
     for i, n in enumerate(m.names):
         assert abs(q[i] / ref[n] - 1) < 1e-8, n
+
+
+def test_builder_micropore_kinetics_errata_e7():
+    """Table 5.7 constants for all species except those listed in micropore_use_measured (CH4: Table 4.10 refit)."""
+    ac = load_yaml(P / "ac5ks_lopes2010.yaml")
+    lay = compact_breakthrough(5, N=4).col.layers[0]
+    assert ac["psa_transport"]["micropore_use_measured"] == ["CH4"]
+    assert (lay.Dc0["CH4"], lay.Ea["CH4"]) == arrhenius_fit(ac["micropore_kinetics_breakthrough"]["CH4"]["Dc_over_rc2"])
+    for s in ("H2", "CO2", "CO", "N2"):
+        assert lay.Dc0[s] == ac["psa_transport"]["micropore"][s]["Dc0_over_rc2"]
+    assert compact_breakthrough(5, N=4, measured_kinetics=[]).col.layers[0].Dc0["CH4"] == 35.52
 
 
 def test_jacobian_sparsity_pattern_is_complete():

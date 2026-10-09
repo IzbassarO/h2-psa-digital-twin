@@ -61,3 +61,5 @@ psa_transport:                  # Table 5.9 p.177 — parameters the author used
     CO:  {Dc0_over_rc2: 4.955, Ea: 10.8}
     CH4: {Dc0_over_rc2: 35.52, Ea: 26.4}
     N2:  {Dc0_over_rc2: 349.7, Ea: 19.8}
+  micropore_use_measured: [CH4] # errata E7: these species take the Arrhenius refit of micropore_kinetics_breakthrough
+                                #   (Table 4.10) instead of the printed constants above. Sensitivity case: all species.
