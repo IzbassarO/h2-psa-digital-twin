@@ -2,7 +2,8 @@
 
 The figures are vector graphics (Excel EMF -> PDF), so every experimental symbol is a path object.
 Marker centres are taken from the path geometry and mapped to data units with a linear fit to the
-axis tick labels. No pixel reading is involved.
+axis tick labels. No pixel reading is involved. The author's simulation lines (gPROMS, same model
+equations) are extracted as well, into *_authorsim.csv, as a cross-check of our implementation.
 
 Requires PyMuPDF (`pip install pymupdf`, not a package dependency) and
 literature/Lopes2010_thesis.pdf.  Output: data/benchmarks/digitized/*.csv
@@ -100,6 +101,22 @@ def marker_centres(page):
     return {c: {k: np.array(v) for k, v in d.items()} for c, d in pts.items()}
 
 
+def line_vertices(page):
+    """{colour: (x, y) vertices} of the simulation lines. Lines are stroke outlines (filled polygons,
+    ~0.6 pt wide), so each vertex lies within half a line width of the plotted curve."""
+    out: dict[tuple, list] = {}
+    for dr in page.get_drawings():
+        col = tuple(round(v, 2) for v in (dr.get("fill") or ()))
+        items = dr["items"]
+        if col not in COLOURS or len(items) <= 30 or all(it[0] == "re" for it in items):
+            continue  # symbols, frames, axis ticks
+        sps = subpaths(dr)
+        if all(len(sp) <= 5 for sp in sps):
+            continue  # x / + symbol groups
+        out.setdefault(col, []).extend((p.x, p.y) for sp in sps for p in sp)
+    return {c: np.array(v) for c, v in out.items()}
+
+
 def frames(page):
     out = []
     for dr in page.get_drawings():
@@ -150,6 +167,7 @@ def main():
         page = doc[printed + 34 - 1]
         words = page.get_text("words")
         marks = marker_centres(page)
+        lines = line_vertices(page)
         frs = frames(page)
         assert len(frs) == len(panels), (fig, len(frs))
         for (run, kind), fr in zip(panels, frs):
@@ -190,6 +208,27 @@ def main():
                     fh.write(f"{name},{t:.1f},{v:.5g}\n")
             counts = {n: sum(r[0] == n for r in rows) for n in sorted({r[0] for r in rows})}
             print(f"{fn.name}: {counts}  u_t={ut:.1f}s u_y={uy:.2g}  (label resid {rx:.2g}, {ry:.2g})")
+
+            sim = []
+            for col, xy in lines.items():
+                name = COLOURS[col][1 if kind == "T" else 0]
+                if name is None:
+                    continue
+                xy = xy[(xy[:, 0] >= fr.x0) & (xy[:, 0] <= fr.x1) & (xy[:, 1] >= fr.y0) & (xy[:, 1] <= fr.y1)]
+                sim += [(name, ax + bx * x, ay + by * y) for x, y in np.unique(xy.round(3), axis=0)]
+            sim.sort()
+            fn = OUT / f"lopes2010_{run}_{kind}_authorsim.csv"
+            with open(fn, "w") as fh:
+                fh.write(f"# Lopes (2010) Figure {fig}, printed p.{printed}, PDF p.{printed + 34}; compact unit {run}, panel '{kind}'\n")
+                fh.write("# the AUTHOR'S SIMULATION lines (gPROMS), not experimental data\n")
+                fh.write("# method: vertices of the stroke-outline polygons of each line (scripts/digitize_lopes2010.py);\n")
+                fh.write(f"# every vertex lies within half a line width (0.3 pt = {0.3 * abs(bx):.0f} s or "
+                         f"{0.3 * abs(by):.2g} {unit}) of the plotted curve; lines leaving the frame are clipped at it,\n")
+                fh.write("# which can leave a few vertices along the frame edge (e.g. H2 in the zoomed panels)\n")
+                fh.write(f"series,time_s,{head}\n")
+                for name, t, v in sim:
+                    fh.write(f"{name},{t:.1f},{v:.5g}\n")
+            print(f"  {fn.name}: { {n: sum(r[0] == n for r in sim) for n in sorted({r[0] for r in sim})} }")
 
 
 if __name__ == "__main__":
