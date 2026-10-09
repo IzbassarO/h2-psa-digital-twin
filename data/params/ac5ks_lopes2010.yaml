@@ -1,0 +1,60 @@
+# Modified activated carbon AC5-KS — single-adsorbent bed of the Lopes (2010) PSA experiment.
+# Source: F.V.S. Lopes, PhD thesis, University of Porto, 2010. doi:10.34626/ftfe-yr63
+# Page numbers are the PRINTED page numbers of the thesis (PDF page = printed + 34).
+# Every value below was checked against a page render; see data/PROVENANCE.md for errata.
+
+adsorbent: AC5-KS
+type: modified activated carbon (CO2 physical activation of Norit R2030 extrudates)
+
+physical:                       # Table 4.5, p.122
+  pellet_porosity: 0.627        # eps_p [-]
+  particle_density: 786.0       # rho_p [kg m-3]
+  solid_density: 2110.0         # rho_s [kg m-3]
+  pellet_radius: 1.45e-3        # R_p [m]
+  bet_surface_area: 9.71e5      # S [m2 kg-1]  (971 m2 g-1, Table 4.3, p.116); used as S in the virial isotherm
+  ldf_factor_macropore: 8       # Omega_p, cylinder particles (Table 4.7, p.123)
+  ldf_factor_micropore: 3       # Omega_c, slab micropores (Table 4.7, p.123)
+  tortuosity: 2.0               # tau_p ASSUMED: carried over from ch.3 (R2030, HY2SEPS; pp.102-103); not reported for AC5-KS.
+                                #   Only needed if D_p is recomputed (Table 5.9 gives D_p directly).
+
+isotherm:
+  model: virial                 # eq. (2.5)-(2.9) p.34; multicomponent Taqvi & LeVan, eq. (5.1)-(5.2) p.167
+  # P_i[bar] = q_i/K_H,i * exp( 2/S * sum_j A_ij q_j + 3/(2 S^2) * sum_j sum_k B_ijk q_j q_k )
+  # K_H = K_inf * exp(-dH/(R T)) ; A = A0 + A1/T ; B = B0 + B1/T
+  # A_ij = (A_i + A_j)/2 ; B_ijk = (B_i + B_j + B_k)/3
+  validity: {T_K: [303, 323], P_bar: [0, 7]}
+  source: Table 4.9 p.127 (identical numbers in Table 5.5 p.168; see errata E1, E2)
+  # B1 stored with the x1e11 factor of Table 4.9 (Table 5.5 header says x1e6) — errata E1
+  units: {K_inf: mol kg-1 bar-1, minus_dH: kJ mol-1, A0: m2 mol-1, A1: m2 K mol-1, B0: m4 mol-2, B1: m4 K mol-2}
+  species:
+    H2:  {K_inf: 2.12e-3, minus_dH: 7.26,  A0: -1.917e5, A1:  0.1994e6, B0:  -4.015e11, B1: 7315.4e11}   # A1: Table 4.9 prints '0.1994-', Table 5.5 +0.1994 (errata E6)
+    CO2: {K_inf: 8.06e-5, minus_dH: 28.02, A0:  0.081e5, A1:  45.31e6,  B0:  -0.365e11, B1:   92.247e11}
+    CO:  {K_inf: 7.63e-5, minus_dH: 23.23, A0: -0.149e5, A1: 105.46e6,  B0:  -2.407e11, B1:  528.18e11}   # A1 sign corrected, errata E2
+    CH4: {K_inf: 2.29e-4, minus_dH: 23.18, A0: 12.808e5, A1: -294.44e6, B0:  -6.101e11, B1: 1745.7e11}
+    N2:  {K_inf: 3.06e-4, minus_dH: 18.27, A0: 11.989e5, A1: -278.79e6, B0: -13.758e11, B1: 3988.6e11}
+
+micropore_kinetics_breakthrough:   # Table 4.10 p.128 — fitted on single-gas breakthrough curves
+  units: {Dc_over_rc2: s-1, Ea: kJ mol-1}
+  H2:  {Dc_over_rc2: {303: 8.130,   323: 10.04},   Ea: 8.51}
+  CO2: {Dc_over_rc2: {303: 3.70e-2, 323: 4.73e-2}, Ea: 17.6}
+  CH4: {Dc_over_rc2: {303: 7.56e-2, 323: 1.44e-1}, Ea: 26.4}
+  CO:  {Dc_over_rc2: {303: 3.59e-1, 323: 5.06e-1}, Ea: 10.8}
+  N2:  {Dc_over_rc2: {303: 7.16e-1, 323: 1.17},    Ea: 19.8}
+
+psa_transport:                  # Table 5.9 p.177 — parameters the author used in the PSA simulations
+  # simulation groups refer to Table 5.8 / 5.10 run numbers
+  groups:
+    "1-4":   {Dax: 1.26e-5,  lambda: 0.881, kf: 1.31e-2, hf: 136, hw: 55, U: 50,
+              Dp: {H2: 6.77e-6, CO2: 5.78e-6, CO: 4.51e-6, CH4: 4.58e-6, N2: 4.45e-6}}
+    "5-14":  {Dax: 0.628e-5, lambda: 0.881, kf: 0.65e-2, hf: 136, hw: 55, U: 50,
+              Dp: {H2: 3.38e-6, CO2: 2.89e-6, CO: 2.26e-6, CH4: 2.29e-6, N2: 2.23e-6}}
+    "15-17": {Dax: 0.679e-5, lambda: 0.921, kf: 0.72e-2, hf: 141, hw: 55, U: 50,
+              Dp: {H2: 3.78e-6, CO2: 3.23e-6, CO: 2.53e-6, CH4: 2.57e-6, N2: 2.49e-6}}
+  units: {Dax: m2 s-1, lambda: J s-1 m-1 K-1, kf: m s-1, hf: J s-1 m-2 K-1, hw: J s-1 m-2 K-1, U: J s-1 m-2 K-1, Dp: m2 s-1}
+  note: Dp values are at inlet conditions. The PSA experiment (5 bar, 303 K) uses the "1-4" group.
+  micropore:                    # Dc0/rc2 [s-1] ; Ea [kJ mol-1] — see errata E3 (not consistent with Table 4.10)
+    H2:  {Dc0_over_rc2: 46.35, Ea: 8.51}
+    CO2: {Dc0_over_rc2: 35.64, Ea: 17.6}
+    CO:  {Dc0_over_rc2: 4.955, Ea: 10.8}
+    CH4: {Dc0_over_rc2: 35.52, Ea: 26.4}
+    N2:  {Dc0_over_rc2: 349.7, Ea: 19.8}

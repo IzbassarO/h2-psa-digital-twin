@@ -1,0 +1,46 @@
+# "Compact" 2-column PSA unit at LSRE (Porto) — column, feed and cycle of the single-column PSA experiment.
+# Source: Lopes (2010) PhD thesis, ch.5. Printed page numbers (PDF page = printed + 34).
+
+column:                          # Table 5.3 p.165
+  adsorbent: AC5-KS
+  adsorbent_mass: 0.2456         # [kg]
+  bed_height: 0.267              # L [m]
+  bed_volume: 5.24e-4            # [m3]
+  bed_porosity: 0.404            # eps [-]
+  internal_diameter: 0.0500      # d_wi [m]  DERIVED: sqrt(4 V / (pi L)) = 0.04999 m
+  thermocouples_from_inlet: [0.059, 0.151, 0.239]   # [m]
+  bulk_density_check: "m/V = 468.7 kg m-3 vs rho_p (1-eps) = 468.5 kg m-3 (consistent)"
+
+feed:                            # Table 5.4 p.167
+  composition: {H2: 0.79, CO2: 0.17, CH4: 0.021, CO: 0.012, N2: 0.007}
+  temperature: 303.0             # [K]
+  flow_rate_std: 5.00e-5         # [m3 s-1] at 298 K and 1 bar  -> 2.018e-3 mol s-1
+
+cycle_B_experiment:              # Table 5.4 p.167, Figure 5.7 p.166 (single column, 10 steps)
+  steps: [Feed, ED1, ED2, ED3, Blow, Purge, EP3, EP2, EP1, Press]
+  pressures_bar: {P_high: 5.0, P_inter1: 3.875, P_inter2: 2.75, P_inter3: 1.625, P_low: 0.5}
+  times_s: {Feed: 101, ED1: 16, ED2: 16, ED3: 16, Blow: 201, Purge: 40, EP3: 16, EP2: 16, EP1: 16, Press: 21}
+  cycle_time_s: 459              # sum of steps; matches Figure 5.18 axis (0-459 s)
+  purge_and_press_gas: hydrogen
+  initial_state: column filled with He at feed T and P
+  boundary_conditions: eq. (5.36)-(5.47) pp.178-180
+  pressure_change: exponential decay with rate constant beta_P, eq. (5.39) p.178; value NOT reported
+
+performance_definitions: eq. (5.48)-(5.50) p.180   # purity, recovery, productivity
+
+model:                           # pp.167-174
+  assumptions: [ideal gas, constant porosity, bi-LDF (macro + micro), axial dispersed plug flow,
+                no intraparticle T gradients, no radial gradients, film model for external transfer]
+  momentum: Ergun eq. (5.4)
+  correlations: Wakao-Funazkri eq. (5.20)-(5.23); Wasch-Froment hw eq. (5.31); Churchill-Chu eq. (5.32)
+  original_solver: gPROMS, orthogonal collocation on finite elements, 40 elements, 2 interior points, tol 1e-5
+
+assumed:                         # NOT reported in the thesis — chosen by us, varied in sensitivity analysis
+  solid_heat_capacity:  {value: 880.0,  range: [700.0, 1100.0], units: J kg-1 K-1,
+                         note: "typical for activated carbon pellets; thesis lists symbol Cp,s but no value"}
+  wall_thickness:       {value: 0.003,  range: [0.002, 0.005],  units: m}
+  wall_density:         {value: 8000.0, units: kg m-3, note: stainless steel}
+  wall_heat_capacity:   {value: 500.0,  units: J kg-1 K-1, note: stainless steel}
+  pressure_decay_rate:  {value: null,   range: [0.05, 1.0], units: s-1,
+                         note: "beta_P, eq. (5.39); to be fitted to the pressure history in Figure 5.18a"}
+  ambient_temperature:  {value: 303.0, units: K, note: column heated with flexible heater (Fig. 5.6)}

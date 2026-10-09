@@ -1,0 +1,13 @@
+# source PDFs are not redistributed
+literature/*
+!literature/README.md
+# generated
+results/*
+!results/.gitkeep
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+.ipynb_checkpoints/
+.DS_Store

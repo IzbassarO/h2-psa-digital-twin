@@ -1,0 +1,32 @@
+# Industrial SMR hydrogen plant — PSA inlet, product and tail gas.
+# Source: NETL, "Comparison of Commercial, State-of-the-Art, Fossil-Based Hydrogen Production
+# Technologies", DOE/NETL-2022/3241, April 12, 2022. Case 1 (SMR without capture),
+# Exhibit 3-4 stream table, report pages 60-61 (PDF pp. 78-79).
+
+case: "Case 1 - steam methane reforming without CO2 capture"
+
+psa_feed:                        # stream 10 (after shift and cooling)
+  composition: {H2: 0.7483, CO2: 0.1891, CH4: 0.0513, CO: 0.0050, N2: 0.0038, H2O: 0.0025}
+  flow_kmol_h: 15654
+  temperature_C: 38
+  pressure_MPa: 2.45
+
+psa_product:                     # stream 11
+  composition: {H2: 0.9998, N2: 0.0002}
+  flow_kmol_h: 9959
+  temperature_C: 38
+  pressure_MPa: 2.39
+
+psa_tail_gas:                    # stream 13 (sent as fuel to the reformer furnace)
+  composition: {H2: 0.3085, CO2: 0.5198, CH4: 0.1410, CO: 0.0137, N2: 0.0100, H2O: 0.0069}
+  flow_kmol_h: 5695
+  temperature_C: 38
+  pressure_MPa: 0.14
+
+derived:
+  h2_recovery: 0.850             # 9959*0.9998 / (15654*0.7483)
+  pressure_ratio: 17.5           # 2.45 / 0.14
+  note: >
+    The dry-basis feed (H2O removed and renormalised) is used as the industrial scenario.
+    H2 partial pressure (~18 bar) exceeds the 0-7 bar range of the Lopes isotherms: this is an
+    extrapolation and must be reported as a limitation (H2 isotherms are near-linear).

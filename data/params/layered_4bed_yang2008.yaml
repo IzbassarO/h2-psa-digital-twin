@@ -1,0 +1,30 @@
+# Four-bed layered PSA (activated carbon + zeolite 5A) for SMR off-gas — trend benchmark only.
+# Source: S. Yang, J. Park, S. Jang, S. Kim, D. Choi, "Hydrogen purification by the four-bed pressure
+# swing adsorption process from steam methane reforming off-gas", Proc. Korean New & Renewable
+# Energy Society autumn conference 2008, pp. 383-386 (KoreaScience CFKO200835535938778).
+# Isotherm parameters are NOT given in this paper (dual-site Langmuir, cited elsewhere), so it is used
+# for geometry, cycle and qualitative trends, not for quantitative validation.
+
+feed:
+  composition: {H2: 0.722, CO2: 0.216, CO: 0.0203, CH4: 0.0417}
+  adsorption_pressure_atm: 9
+
+column:                          # Table 2 p.384
+  layers:
+    - {adsorbent: activated carbon (Calgon), length_m: 1.00, bulk_density: 532.0, void_fraction: 0.433}
+    - {adsorbent: zeolite 5A (W.R. Grace),   length_m: 0.70, bulk_density: 744.0, void_fraction: 0.357}
+  inside_diameter_m: 0.0384
+  outside_diameter_m: 0.0486
+  wall_heat_capacity: 502.0      # 0.12 cal g-1 K-1 -> J kg-1 K-1
+  wall_density: 7830.0           # [kg m-3]
+  internal_htc: 38.5             # 0.0385 kJ s-1 m-2 K-1 -> W m-2 K-1
+  external_htc: 14.2             # W m-2 K-1
+
+cycle: four-bed ten-step with adsorption, provide-purge, two equalisations, blowdown, purge, backfill (Table 3)
+
+results_at_99_999_purity:        # text p.385, experimental
+  - {linear_velocity_cm_s: 5.2,  h2_recovery: 0.6636}
+  - {linear_velocity_cm_s: 4.7,  h2_recovery: 0.7388}
+  - {linear_velocity_cm_s: 3.9,  h2_recovery: 0.7593}
+  - {linear_velocity_cm_s: 3.14, h2_recovery: 0.7543}
+trend: purity stays >= 99.999% up to ~200 s total cycle time at 5.2 cm/s, then falls; recovery rises with cycle time

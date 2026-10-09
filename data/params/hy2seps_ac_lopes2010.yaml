@@ -1,0 +1,42 @@
+# HY2SEPS-AC activated carbon — feed-end layer for the layered-bed configuration (step 4).
+# Source: Lopes (2010) PhD thesis, ch.2-3. Printed page numbers (PDF page = printed + 34).
+
+adsorbent: HY2SEPS-AC
+type: activated carbon extrudates (HY2SEPS EU project)
+
+physical:                        # Table 3.10 p.94 ; Table 2.3 p.39
+  pellet_diameter: 2.35e-3       # [m]
+  pellet_length: [3.0e-3, 4.0e-3]
+  pellet_porosity: 0.566
+  particle_density: 842.0        # [kg m-3]
+  solid_density: 1939.0          # [kg m-3]
+  bet_surface_area: 4.808e5      # [m2 kg-1]
+  mean_macropore_diameter: 15.9e-6  # [m], mercury porosimetry p.39
+
+isotherm:
+  model: multisite_langmuir      # Nitta et al., eq. (2.10) p.35: q/qmax = a K P (1 - q/qmax)^a
+  # K = K_inf * exp(-dH/(R T)) with P in kPa ; a*qmax is constant (thermodynamic consistency, eq. 2.12)
+  validity: {T_K: [303, 343], P_bar: [0, 7]}
+  source: Table 2.7 p.49
+  units: {q_max: mol kg-1, a: "-", K_inf: kPa-1, minus_dH: kJ mol-1}
+  species:
+    CO2: {q_max: 7.855, a: 3.0, K_inf: 2.1278e-8, minus_dH: 29.1}
+    H2:  {q_max: 23.57, a: 1.0, K_inf: 7.6902e-8, minus_dH: 12.8}
+    CH4: {q_max: 6.733, a: 3.5, K_inf: 7.9165e-8, minus_dH: 22.7}
+    CO:  {q_max: 9.063, a: 2.6, K_inf: 2.6801e-8, minus_dH: 22.6}
+    N2:  {q_max: 5.891, a: 4.0, K_inf: 23.428e-8, minus_dH: 16.3}
+
+micropore_kinetics:              # Table 3.12 p.98 ; Dc/rc2 at T and Arrhenius fit
+  units: {Dc_over_rc2: s-1, Dc0_over_rc2: s-1, Ea: kJ mol-1}
+  CO2: {Dc_over_rc2: {303: 3.35e-2, 323: 4.74e-2, 343: 6.97e-2}, Dc0_over_rc2: 17.5,  Ea: 15.8}
+  H2:  {Dc_over_rc2: {303: 2.31e-1, 323: 3.17e-1, 343: 3.73e-1}, Dc0_over_rc2: 14.8,  Ea: 10.4}
+  CH4: {Dc_over_rc2: {303: 9.41e-3, 323: 1.64e-2, 343: 2.71e-2}, Dc0_over_rc2: 81.5,  Ea: 22.8}   # 323 K corrected, errata E4
+  CO:  {Dc_over_rc2: {303: 5.79e-2, 323: 8.08e-2, 343: 1.31e-1}, Dc0_over_rc2: 59.2,  Ea: 17.5}
+  N2:  {Dc_over_rc2: {303: 6.44e-2, 323: 6.47e-2, 343: 8.98e-2}, Dc0_over_rc2: 0.995, Ea: 7.03}
+
+macropore_diffusivity_303K:      # text p.97 [m2 s-1]
+  H2: 7.21e-5
+  CO: 3.55e-5
+  N2: 3.49e-5
+  CH4: 3.42e-5
+  CO2: 2.91e-5

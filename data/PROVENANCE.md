@@ -1,0 +1,53 @@
+# Data provenance and errata
+
+All parameters are transcribed by hand from public sources. Every number is cross-checked twice:
+by `scripts/check_params.py` (25 automated checks) and by an independent visual audit of the
+rendered PDF pages (~580 values, 2026-10-09).
+
+## Sources
+
+| Key | Reference | Access | Used for |
+|---|---|---|---|
+| Lopes2010 | F.V.S. Lopes, *New pressure swing adsorption cycles for hydrogen purification from steam reforming off-gases*, PhD thesis, University of Porto, 2010. doi:10.34626/ftfe-yr63, hdl:10216/61875 | Open access | Isotherms, kinetics, column, PSA experiment and 17 reference simulations |
+| NETL2022 | NETL, *Comparison of Commercial, State-of-the-Art, Fossil-Based Hydrogen Production Technologies*, DOE/NETL-2022/3241, 2022 | Public | Industrial PSA feed/product/tail gas (Exhibit 3-4) |
+| Yang2008 | S. Yang et al., *Hydrogen purification by the four-bed PSA process from SMR off-gas*, KNRES autumn conf. 2008, pp. 383-386 | Open access (KoreaScience) | Layered-bed geometry, cycle, experimental trends |
+
+Thesis page numbers in the YAML files are **printed** page numbers; PDF page = printed + 34.
+
+## Errata found in the sources
+
+| ID | Location | Printed | Used here | Evidence |
+|---|---|---|---|---|
+| E1 | Lopes2010 Table 5.5 header, column B1 | "B1 × 10^-6" | B1 × 10^-11 (as in Table 4.9) | Only ×1e11 reproduces the CO2 loading of 6.7 mol/kg at 303 K, 7 bar quoted on p.125 (check C1c) |
+| E2 | Lopes2010 Tables 4.9 and 5.5, AC5-KS CO, A1 | −105.46 | **+105.46** | With the printed sign the isotherm cannot exceed 0.55 bar; with the corrected sign all CO points of Fig. 4.10c are reproduced (checks C1, C1b) |
+| E3 | Lopes2010 Table 5.9 (Dc0/rc², PSA simulations) vs Table 4.10 | e.g. H2 46.35 s⁻¹ | both kept | Table 5.9 values do not reproduce the measured Dc/rc² of Table 4.10 (H2 1.58 vs 8.13 s⁻¹ at 303 K). Which set the author actually used is decided in step 3 by matching the PSA experiment |
+| E4 | Lopes2010 Table 3.12, HY2SEPS-AC CH4, 323 K | 1.64 × 10⁻³ | 1.64 × 10⁻² | Value must lie between 9.41e-3 (303 K) and 2.71e-2 (343 K); the table's own Arrhenius fit gives 1.68e-2 (check C3c) |
+| E5 | Lopes2010 Table 3.15, HY2SEPS-ZEO, Dc0/rc² | e.g. CO2 0.268 s⁻¹ | refitted from measured Dc/rc² | Printed (Dc0, Ea) miss the table's own Dc/rc² values by a factor of ~1.9 (15/15 points). Convention: measured values are primary, Arrhenius refitted (`h2psa.kinetics.arrhenius_fit`) |
+| E6 | Lopes2010 Table 4.9, AC5-KS H2, A1 | "0.1994-" | +0.1994 | Table 5.5 prints +0.1994; H2 loadings in Fig. 4.10a reproduced (check C1) |
+
+## Values not reported in any source (assumed; varied in sensitivity analysis)
+
+Listed under `assumed:` in `compact_column_lopes2010.yaml`: solid heat capacity, wall thickness,
+wall density and heat capacity, pressure-change rate constant βP (to be fitted to Fig. 5.18a),
+ambient temperature. AC5-KS tortuosity (τp = 2) is carried over from chapter 3.
+
+## Known limitations of the data
+
+* Isotherms are fitted on 0–7 bar. In the industrial scenario (NETL, 24.5 bar) the H2 partial pressure
+  (~18 bar) is an extrapolation; CO2, CH4, CO and N2 partial pressures stay inside the range.
+* The experimental validation (Lopes2010) is a single-adsorbent bed (AC5-KS). The layered bed
+  (HY2SEPS-AC + HY2SEPS-ZEO) is validated component-wise, plus qualitative trends from Yang2008.
+* Loadings used in check C1 are read off Figures 4.9–4.10 (±5 %).
+
+## Open issues carried into step 2
+
+* **H2 in mixtures (AC5-KS virial).** The H2 virial coefficient B is very large (B1 = 7315.4e11 m⁴ K mol⁻²),
+  fitted where pure-H2 loadings are tiny. Through the Taqvi–LeVan mixing rule B_ijk = (B_i+B_j+B_k)/3, it
+  pushes predicted H2 co-adsorption close to zero once CO2 is loaded (e.g. 4e-4 mol/kg at 5 bar feed vs
+  0.012 mol/kg at 0.5 bar). H2 co-adsorption controls H2 lost in blowdown, so this directly biases recovery.
+  Step 2 tests it against the measured H2–CO2 binary breakthrough curves (Table 5.3, runs 1–3) before use.
+
+## Licence
+
+Transcribed data: CC BY 4.0. Cite the original sources above when reusing them.
+Source PDFs are not redistributed (put them in `literature/`, which is git-ignored).

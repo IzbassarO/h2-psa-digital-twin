@@ -1,0 +1,2 @@
+id,source,cycle,T_feed_K,P_high_bar,P_low_bar,t_feed_s,t_blow_s,t_purge_s,t_press_s,t_eq_s,cycle_time_s,h2_purity_pct,co_ppm,h2_recovery_pct,productivity_mol_kg_day,cycles_to_css
+EXP,Lopes2010 pp.191-192 (Table 5.4 p.167); cycles_to_css is from the simulation,B,303,5,0.5,101,201,40,21,16,459,99.9805,63.0,81.6,101.1,240

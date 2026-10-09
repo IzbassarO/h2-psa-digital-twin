@@ -1,0 +1,42 @@
+# HY2SEPS-ZEO zeolite — product-end layer for the layered-bed configuration (step 4).
+# Zeolite type not disclosed (HY2SEPS confidentiality); isotherms close to zeolite 4A (thesis p.54).
+# Source: Lopes (2010) PhD thesis, ch.2-3. Printed page numbers (PDF page = printed + 34).
+
+adsorbent: HY2SEPS-ZEO
+type: zeolite extrudates (type undisclosed; similar to 4A)
+
+physical:                        # Table 3.13 p.101 ; Table 2.4 p.40
+  pellet_diameter: 1.70e-3       # [m]
+  pellet_length: [4.0e-3, 6.0e-3]
+  pellet_porosity: 0.503
+  particle_density: 1126.0       # [kg m-3]
+  solid_density: 2267.0          # [kg m-3]
+  bet_surface_area: 4.339e5      # [m2 kg-1]
+
+isotherm:
+  model: multisite_langmuir      # eq. (2.10) p.35, K in kPa-1
+  validity: {T_K: [303, 343], P_bar: [0, 7]}
+  source: Table 2.8 p.54
+  units: {q_max: mol kg-1, a: "-", K_inf: kPa-1, minus_dH: kJ mol-1}
+  species:
+    CO2: {q_max: 4.525, a: 2.2, K_inf: 11.121e-8, minus_dH: 36.0}
+    H2:  {q_max: 9.954, a: 1.0, K_inf: 52.024e-8, minus_dH: 9.23}
+    CH4: {q_max: 4.976, a: 2.0, K_inf: 17.793e-8, minus_dH: 20.6}
+    CO:  {q_max: 3.828, a: 2.6, K_inf: 1.5164e-8, minus_dH: 29.8}
+    N2:  {q_max: 4.148, a: 2.4, K_inf: 12.851e-8, minus_dH: 20.4}
+  text_check_303K_7bar: {CO2: 4.0, CH4: 1.8, CO: 2.1, N2: 1.2, H2: 0.1}   # loadings quoted on p.54 [mol kg-1]
+
+crystal_kinetics:                # Table 3.15 p.103
+  units: {Dc_over_rc2: s-1, Dc0_over_rc2: s-1, Ea: kJ mol-1}
+  CO2: {Dc_over_rc2: {303: 3.41e-4, 323: 5.17e-4, 343: 7.84e-4}, Dc0_over_rc2: 0.268, Ea: 18.0}
+  H2:  {Dc_over_rc2: {303: 4.97e-2, 323: 6.40e-2, 343: 8.53e-2}, Dc0_over_rc2: 9.33,  Ea: 11.6}
+  CH4: {Dc_over_rc2: {303: 5.05e-3, 323: 1.13e-2, 343: 1.29e-2}, Dc0_over_rc2: 36.9,  Ea: 20.6}
+  CO:  {Dc_over_rc2: {303: 2.34e-3, 323: 4.20e-3, 343: 8.85e-3}, Dc0_over_rc2: 368.0, Ea: 28.7}
+  N2:  {Dc_over_rc2: {303: 1.13e-2, 323: 1.66e-2, 343: 2.24e-2}, Dc0_over_rc2: 7.86,  Ea: 14.9}
+
+macropore_diffusivity_303K:      # text p.103 [m2 s-1]
+  H2: 7.56e-5
+  CO: 3.30e-5
+  N2: 3.25e-5
+  CH4: 3.24e-5
+  CO2: 2.69e-5
