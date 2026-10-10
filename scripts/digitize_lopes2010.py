@@ -320,6 +320,74 @@ def psa():
                 print(f"{fn.name}: { {n: sum(r[0] == n for r in data) for n in sorted({r[0] for r in data})} }")
 
 
+# Simulation 13 at CSS (author's model only, Figs 5.20-5.23): lines, one PDF path per series, in legend order.
+# frame order = frames() order (top-to-bottom, left-to-right); per frame: (file tag, x name, [(series, axis)])
+STEPS10 = ["Feed", "ED1", "ED2", "ED3", "Blow", "Purge", "EP3", "EP2", "EP1", "Press"]
+CYC10 = [f"cycle {k}" for k in (1, 6, 11, 16, 21, 51, 101, 161, 221, 296)]
+SIM13 = [
+    ("5.20", 197, [("sim13_H2flow", "time_s", [("H2_mmol_s", "L")]),
+                   ("sim13_pressure", "time_s", [("P_bar", "L")]),
+                   ("sim13_flows", "time_s", [("CO2_mmol_s", "L"), ("CH4_mmol_s", "R"), ("CO_mmol_s", "R"), ("N2_mmol_s", "R")])]),
+    ("5.21", 198, [(f"sim13_q{sp}", "z_m", [(s, "L") for s in STEPS10]) for sp in ("H2", "CO2", "CH4", "CO", "N2")]),
+    ("5.22-5.23", 199, [(None, None, None),       # Fig. 5.22 (purity off-scale, recovery mostly off-frame): not read
+                   ("sim13_Tg_feedend", "z_m", [(c, "L") for c in CYC10]),
+                   ("sim13_CN2_feedend", "z_m", [(c, "L") for c in CYC10])]),
+]
+
+
+def right_fit(words, fr):
+    lab = np.array([((w[1] + w[3]) / 2, float(w[4])) for w in words if w[4].replace(".", "").isdigit()
+                    and fr.x1 - 1 < w[0] < fr.x1 + 15 and fr.y0 - 8 < (w[1] + w[3]) / 2 < fr.y1 + 8])
+    b, a = np.polyfit(lab[:, 0], lab[:, 1], 1)
+    return a, b
+
+
+def sim13(nbin=150):
+    """Author's simulation 13 (CSS) lines -> data/benchmarks/digitized/lopes2010_sim13_*_authorsim.csv.
+    Each series is the median of its stroke-outline vertices in nbin equal x bins (within half a line width)."""
+    doc = pymupdf.open(PDF)
+    for fig, printed, panels in SIM13:
+        page = doc[printed + 34 - 1]
+        words = page.get_text("words")
+        frs = frames(page)
+        if printed == 198:                       # five panels; frames() also returns them in reading order
+            assert len(frs) == 5, len(frs)
+        draws = [dr for dr in page.get_drawings() if len(dr["items"]) > 30
+                 and tuple(round(v, 2) for v in (dr.get("fill") or ())) != (1.0, 1.0, 1.0)]
+        for (tag, xname, series), fr in zip(panels, frs):
+            if tag is None:
+                continue
+            (ax, bx, *_), (ay, by, *_) = axis_fit(words, fr)
+            R = right_fit(words, fr) if any(a == "R" for _, a in series) else None
+            mine = [dr for dr in draws if dr["rect"].x0 >= fr.x0 - 2 and dr["rect"].x1 <= fr.x1 + 2
+                    and dr["rect"].width > 0.5 * fr.width and not (dr["rect"].width < 2)
+                    and np.mean([max(p.x for p in sp) - min(p.x for p in sp) < 1.0 for sp in subpaths(dr)]) <= 0.9
+                    and np.mean([fr.contains(p) for sp in subpaths(dr) for p in sp]) > 0.5]
+            assert len(mine) == len(series), (tag, len(mine), len(series))
+            rows = []
+            for (name, axis), dr in zip(series, mine):
+                xy = np.array([(p.x, p.y) for sp in subpaths(dr) for p in sp])
+                xy = xy[(xy[:, 0] >= fr.x0) & (xy[:, 0] <= fr.x1) & (xy[:, 1] >= fr.y0) & (xy[:, 1] <= fr.y1)]
+                a2, b2 = (ay, by) if axis == "L" else R
+                X, Y = ax + bx * xy[:, 0], a2 + b2 * xy[:, 1]
+                edges = np.linspace(ax + bx * fr.x0, ax + bx * fr.x1, nbin + 1)
+                k = np.digitize(X, edges) - 1
+                for j in np.unique(k):
+                    if 0 <= j < nbin:
+                        rows.append((name, 0.5 * (edges[j] + edges[j + 1]), float(np.median(Y[k == j]))))
+            fn = OUT / f"lopes2010_{tag}_authorsim.csv"
+            with open(fn, "w") as fh:
+                fh.write(f"# Lopes (2010) Figure {fig}, printed p.{printed}, PDF p.{printed + 34}; simulation 13 (Table 5.10) at CSS\n")
+                fh.write("# the AUTHOR'S SIMULATION lines (gPROMS), not experimental data; one PDF path per series (legend order)\n")
+                fh.write(f"# method: median of the stroke-outline vertices in {nbin} equal x bins (scripts/digitize_lopes2010.py);\n")
+                fh.write(f"# vertices lie within half a line width (0.3 pt = {0.3 * abs(bx):.3g} x units, {0.3 * abs(by):.3g} y units) of the curve\n")
+                fh.write(f"series,{xname},value\n")
+                for name, x, v in rows:
+                    fh.write(f"{name},{x:.5g},{v:.6g}\n")
+            print(f"{fn.name}: {len(series)} series, {len(rows)} points")
+
+
 if __name__ == "__main__":
     main()
     psa()
+    sim13()
