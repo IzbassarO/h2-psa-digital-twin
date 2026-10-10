@@ -8,9 +8,13 @@ and 5.9; boundary conditions eqs. (5.36)-(5.47) pp.178-180; performance eqs. (5.
   step-start pressure, so P is continuous) and decays towards its nominal end pressure.
 * Press: linear law of eq. (5.47) from the step-start pressure to P_high.
 * Purge: P_low at z = 0, pure H2 entering at z = L at a fixed molar flow.
-* EP inflow composition: not given in the thesis (eq. 5.45 leaves C_inlet open). Default "ed": the gas that
-  left the column in the matching ED step of the same cycle, well mixed (a tank standing in for the partner
-  bed: ED1 -> EP1, ED2 -> EP2, ED3 -> EP3); "h2": pure H2 (sensitivity).
+* EP inflow composition: not given in the thesis (eq. 5.45 leaves C_inlet open). Options (`ep_gas`), all
+  taken from the matching ED step of the same cycle (ED1 -> EP1, ED2 -> EP2, ED3 -> EP3) unless stated:
+  "ed" the ED gas well mixed (a tank standing in for the partner bed); "ed_direct" the ED outlet composition
+  at the same time into the step (first out, first in: a partner bed connected directly); "ed_reversed" the
+  ED outlet composition at t_eq - t (last out, first in); "product" the well-mixed feed-step product of the
+  same cycle; "h2" pure H2.
+* beta_P: one constant (p.180), or per step type (`beta_steps` = {"ED": .., "Blow": .., "EP": ..}).
 * All inflows enter at the feed temperature.
 """
 from __future__ import annotations
@@ -42,7 +46,12 @@ class Cycle:
     feed_flow: float           # mol s-1
     beta_P: float              # s-1
     purge_flow: float          # mol s-1 of H2
-    ep_gas: str = "ed"         # "ed" | "h2"
+    ep_gas: str = "ed"         # "ed" | "ed_direct" | "ed_reversed" | "product" | "h2"
+    beta_steps: dict | None = None   # per step type {"ED", "Blow", "EP"}: overrides beta_P
+
+    def beta(self, name):
+        kind = "ED" if name.startswith("ED") else "EP" if name.startswith("EP") else name
+        return self.beta_steps.get(kind, self.beta_P) if self.beta_steps else self.beta_P
 
     @property
     def steps(self):
@@ -104,6 +113,7 @@ class CycleResult:
     y_end: np.ndarray
     steps: dict = field(default_factory=dict)   # name -> moles (2, ns): in at z = 0, out at z = L
     trace: dict | None = None  # time series when requested
+    profiles: dict | None = None   # step name -> axial profiles at the end of the step, when requested
 
 
 class CycleRunner:
@@ -122,12 +132,13 @@ class CycleRunner:
     def _bcs(self, name, k, dur, P_start, tank):
         c = self.c
         H2 = {"H2": 1.0}
+        beta = c.beta(name)
 
         def const(P):
             return dict(P=lambda t: P, dPdt=lambda t: 0.0)
 
         def expo(P_end):
-            a, b = P_start - P_end, c.beta_P
+            a, b = P_start - P_end, beta
             return dict(P=lambda t: P_end + a * np.exp(-b * t), dPdt=lambda t: -b * a * np.exp(-b * t))
 
         closed = BC("closed")
@@ -140,12 +151,28 @@ class CycleRunner:
         if name == "Purge":
             return BC("pressure", **const(c.P_low)), BC("flow", flow=c.purge_flow, y=H2, T=c.T_feed)
         if name.startswith("EP"):
-            y = H2 if c.ep_gas == "h2" else tank[k]
+            if c.ep_gas in ("ed_direct", "ed_reversed"):
+                phi, Y = tank[("hist", k)]
+                f = (lambda t: t / dur) if c.ep_gas == "ed_direct" else (lambda t: 1.0 - t / dur)
+                y_t = lambda t: np.array([np.interp(f(t), phi, Yi) for Yi in Y])
+                return closed, BC("pressure", y=H2, y_t=y_t, T=c.T_feed, **expo(c.P_inter[k - 1]))
+            y = {"h2": H2, "product": tank.get("product"), "ed": tank.get(k)}[c.ep_gas]
             return closed, BC("pressure", y=y, T=c.T_feed, **expo(c.P_inter[k - 1]))
         if name == "Press":
             s = (c.P_high - P_start) / dur
             return closed, BC("pressure", P=lambda t: P_start + s * t, dPdt=lambda t: s, y=H2, T=c.T_feed)
         raise ValueError(name)
+
+    @staticmethod
+    def _ed_history(t, F, nbin=20):
+        """ED gas composition vs the fraction phi of the ED gas already released (bins of equal moles):
+        (phi at bin centres, mole fractions (ns, nbin)). EP maps its time onto phi (t/t_EP or 1 - t/t_EP)."""
+        cum = np.concatenate([np.zeros((F.shape[0], 1)), np.cumsum(0.5 * (F[:, 1:] + F[:, :-1]) * np.diff(t), axis=1)], axis=1)
+        tot = cum.sum(0) / cum.sum(0)[-1]
+        edges = np.linspace(0, 1, nbin + 1)
+        Ni = np.array([np.interp(edges, tot, ci) for ci in cum])
+        dN = np.diff(Ni, axis=1)
+        return 0.5 * (edges[1:] + edges[:-1]), dN / np.maximum(dN.sum(0), 1e-300)
 
     def _pressures(self, y):
         """Cell pressures [Pa] of a state integrated with the current reference."""
@@ -154,11 +181,14 @@ class CycleRunner:
         return P_ref(t) + y[(ns - 1) * N:ns * N]
 
     # -------------------------------------------------------------- one cycle
-    def run_cycle(self, y, trace: bool = False, dt_trace: float = 1.0, until: str | None = None) -> CycleResult:
-        """One cycle from state y. until: stop after this step (partial cycle: no performance)."""
+    def run_cycle(self, y, trace: bool = False, dt_trace: float = 1.0, until: str | None = None,
+                  profiles: bool = False) -> CycleResult:
+        """One cycle from state y. until: stop after this step (partial cycle: no performance).
+        profiles: keep the axial gas concentration, loading and temperature profiles at the end of every step."""
         m, c = self.m, self.c
         ns = m.ns
-        tank, moles, tr = {}, {}, []
+        tank, moles, tr, prof = {}, {}, [], {}
+        hist = c.ep_gas in ("ed_direct", "ed_reversed")
         inv0 = None
         t_cyc = 0.0
         for name, dur, k in c.steps:
@@ -171,6 +201,8 @@ class CycleRunner:
             if inv0 is None:
                 inv0 = m.inventory(y, 0.0)
             n_out = max(int(round(dur / dt_trace)) + 1, 2) if trace else 2
+            if hist and name.startswith("ED"):
+                n_out = max(n_out, int(round(4 * dur)) + 1)
             r = m.solve(dur, n_out=n_out, rtol=self.rtol, y0=y)
             y = r.y_end
             self.ref = (m.P_ref, dur)
@@ -178,15 +210,22 @@ class CycleRunner:
             if name.startswith("ED"):
                 out = np.clip(r.moles[1], 0.0, None)
                 tank[k] = dict(zip(m.sp, out / out.sum()))
+                tank[("hist", k)] = self._ed_history(r.t, np.clip(r.outlet_flow, 0.0, None))
+            if name == "Feed":
+                out = np.clip(r.moles[1], 0.0, None)
+                tank["product"] = dict(zip(m.sp, out / out.sum()))
+            if profiles:
+                C, _, q, Tg, *_ = m._unpack(y, dur)
+                prof[name] = dict(z=m.z, C=C, q=q, Tg=Tg)
             if trace:
                 tr.append(dict(step=name, t=t_cyc + r.t, out_L=r.outlet_flow, in_0=r.inlet_flow,
                                P0=r.P[0], PL=r.P[-1], T=np.array([r.T_at(z) for z in self.z_tc])))
             t_cyc += dur
             if name == until:
-                return CycleResult({}, y, moles, self._stack(tr) if trace else None)
+                return CycleResult({}, y, moles, self._stack(tr) if trace else None, prof or None)
         inv1 = m.inventory(y, self.ref[1])
         return CycleResult(self._performance(moles, inv0, inv1, y), y, moles,
-                           self._stack(tr) if trace else None)
+                           self._stack(tr) if trace else None, prof or None)
 
     def _performance(self, mo, inv0, inv1, y):
         iH, c = self.iH, self.c
@@ -196,6 +235,8 @@ class CycleRunner:
         net = sum(v[0] - v[1] for v in mo.values())
         inflow = sum(np.clip(v[0], 0, None).sum() + np.clip(-v[1], 0, None).sum() for v in mo.values())
         q = self.m._unpack(y, self.ref[1])[2].mean(axis=1)
+        sp = self.m.sp
+        prod = np.where(np.array(sp) == "He", 0.0, prod)        # eq. (5.48): feed components only
         purity = prod[iH] / prod.sum()
         out = dict(purity_pct=100 * purity, ppm=1e6 * (1 - purity),
                    co_ppm=1e6 * prod[self.m.sp.index("CO")] / prod.sum() if "CO" in self.m.sp else np.nan,
@@ -203,7 +244,7 @@ class CycleRunner:
                    productivity=h2_net / self.w_ads * DAY / c.time,                           # eq. (5.50)
                    closure=float((inv1 - inv0 - net).sum() / inflow))
         out.update({f"q_{s}": q[i] for i, s in enumerate(self.m.sp) if s != "He"})
-        out.update({f"imp_{s}_ppm": 1e6 * prod[i] / prod.sum() for i, s in enumerate(self.m.sp) if i != iH})
+        out.update({f"imp_{s}_ppm": 1e6 * prod[i] / prod.sum() for i, s in enumerate(sp) if s not in ("H2", "He")})
         return out
 
     @staticmethod
@@ -214,22 +255,25 @@ class CycleRunner:
 
     # -------------------------------------------------------------- to CSS
     def run_to_css(self, y0=None, max_cycles: int = 2000, tol: float = 1e-4, window: int = 10,
-                   record=(), log=None):
+                   record=(), log=None, profiles=()):
         """Cycle until every CSS quantity (impurity ppm, recovery, bed-averaged loadings) changed by less than
         `tol` (relative) over the last `window` cycles and the cycle mole balance closes within 0.1 %.
-        record: cycle numbers whose time series are kept (the last cycle is always kept)."""
+        record: cycle numbers whose time series are kept (the last cycle is always kept).
+        profiles: cycle numbers whose end-of-step axial profiles are kept (the last cycle is always kept)."""
         y = self.m.y0.copy() if y0 is None else y0.copy()
         if y0 is None:
             self.ref = (self.feed_bc[1].P, 0.0)
-        hist, traces = [], {}
+        hist, traces, profs = [], {}, {}
         keys = None
         t0, c0 = time.perf_counter(), time.process_time()
         n = 0
         css = False
         while n < max_cycles:
             n += 1
-            res = self.run_cycle(y, trace=n in record)
+            res = self.run_cycle(y, trace=n in record, profiles=n in profiles)
             y = res.y_end
+            if res.profiles:
+                profs[n] = res.profiles
             hist.append({"cycle": n, **res.perf})
             if res.trace is not None:
                 traces[n] = res.trace
@@ -244,8 +288,10 @@ class CycleRunner:
                 if rel < tol and all(abs(h["closure"]) < 1e-3 for h in hist[-window:]):
                     css = True
                     break
-        last = self.run_cycle(y, trace=True)   # one more cycle for the time series (continues the sequence)
+        last = self.run_cycle(y, trace=True, profiles=True)   # one more cycle for the time series and profiles
         hist.append({"cycle": n + 1, **last.perf})
         traces[n + 1] = last.trace
+        profs[n + 1] = last.profiles
         return dict(history=hist, css=css, cycles=n, y_end=last.y_end, traces=traces, perf=last.perf,
+                    profiles=profs, step_moles=last.steps,
                     runtime_s=time.perf_counter() - t0, cpu_s=time.process_time() - c0)

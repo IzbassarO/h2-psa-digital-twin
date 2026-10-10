@@ -86,6 +86,7 @@ class BC:
     dPdt: Callable | None = None
     y: dict | None = None
     T: float | None = None
+    y_t: Callable | None = None   # time-dependent inflow composition: t -> mole fractions in model species order
 
 
 def _ergun(G, a, b):
@@ -317,6 +318,8 @@ class ColumnModel:
                 u_end[:, e] = sgn * bc.flow / self.A / CT[:, j]
                 T_in[:, e] = bc.T
             else:                                              # imposed pressure, eqs. (5.37)-(5.42), (5.47)
+                if bc.y_t is not None:
+                    yb = bc.y_t(t)
                 drop = (Pref - P[:, 0]) if e == 0 else (P[:, -1] - Pref)   # -dP/dz x dz/2
                 v = _ergun(drop / (0.5 * dz), a[:, j], b[:, j])
                 u_end[:, e] = v
@@ -450,7 +453,7 @@ class ColumnModel:
 
 # ---------------------------------------------------------------------- builders
 def ac5ks_column(tr: dict, T_amb: float, *, mixing: str | None = None, measured_kinetics=None,
-                 thermal: str | dict | None = None) -> Column:
+                 thermal: str | dict | None = None, eps_p: float | None = None) -> Column:
     """The compact-unit column packed with AC5-KS (Lopes 2010, Tables 4.5, 5.3, 5.5) with transport
     parameters `tr` (Dax, lambda, kf, hf, hw, U, Dp per species: Table 5.7 or 5.9).
 
@@ -459,6 +462,7 @@ def ac5ks_column(tr: dict, T_amb: float, *, mixing: str | None = None, measured_
         Table 5.7/5.9 (None: `psa_transport.micropore_use_measured`, errata E7).
     thermal: "calibrated" | "assumed" solid and wall heat capacities (None: calibrated if the YAML has them),
         or {"Cps": J kg-1 K-1, "Cw": J m-1 K-1} explicitly (sensitivity cases).
+    eps_p: pellet porosity override (diagnostics only; the value of record is Table 4.5).
     """
     cc = load_yaml(PARAMS / "compact_column_lopes2010.yaml")
     ac = load_yaml(PARAMS / "ac5ks_lopes2010.yaml")
@@ -477,7 +481,7 @@ def ac5ks_column(tr: dict, T_amb: float, *, mixing: str | None = None, measured_
         Cw = wall_heat_capacity(e)
     layer = Layer(
         length=cg["bed_height"], eps=cg["bed_porosity"], iso=Virial.from_yaml(PARAMS / "ac5ks_lopes2010.yaml", mixing),
-        rho_p=ph["particle_density"], eps_p=ph["pellet_porosity"], Rp=ph["pellet_radius"],
+        rho_p=ph["particle_density"], eps_p=eps_p or ph["pellet_porosity"], Rp=ph["pellet_radius"],
         Omega_m=ph["ldf_factor_macropore"], Omega_c=ph["ldf_factor_micropore"],
         Cps=Cps, a_p=asm["particle_specific_area"]["value"] / ph["pellet_radius"],
         kf=tr["kf"], hf=tr["hf"], Dp={**tr["Dp"], "He": tr["Dp"]["H2"]},
