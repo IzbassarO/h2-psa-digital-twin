@@ -72,7 +72,8 @@ def _std_flow(cc):
 
 
 def experiment_cycle(**over) -> Cycle:
-    """Cycle B of the PSA experiment (Table 5.4 p.167) with beta_P and the purge flow from `fitted:`."""
+    """Cycle B of the PSA experiment (Table 5.4 p.167) with beta_P and the purge flow from `fitted:`.
+    Defaults are the frozen baseline (step-3 closure): beta_P from `cycle_B_experiment.beta_P_source`, EP = H2."""
     cc = load_yaml(PARAMS / "compact_column_lopes2010.yaml")
     cb, f, fit = cc["cycle_B_experiment"], cc["feed"], cc.get("fitted", {})
     p, t = cb["pressures_bar"], cb["times_s"]
@@ -80,7 +81,7 @@ def experiment_cycle(**over) -> Cycle:
               P_high=p["P_high"] * 1e5, P_low=p["P_low"] * 1e5,
               P_inter=[p["P_inter1"] * 1e5, p["P_inter2"] * 1e5, p["P_inter3"] * 1e5],
               T_feed=f["temperature"], y_feed=f["composition"], feed_flow=_std_flow(cc),
-              beta_P=fit.get("pressure_decay_rate", {}).get("value", np.nan),
+              beta_P=fit.get(cb.get("beta_P_source", "pressure_decay_rate"), {}).get("value", np.nan),
               purge_flow=fit.get("purge_flow", {}).get("value", np.nan),
               ep_gas=cb.get("ep_inflow", "ed"))
     return replace(c, **over)

@@ -35,12 +35,23 @@ def test_cycle_mole_balance(two_cycles):
     assert abs(two_cycles[3].perf["closure"]) < 1e-5
 
 
-def test_ep_inflow_is_ed_gas(two_cycles):
-    """Default EP inflow = well-mixed gas of the matching ED step of the same cycle."""
-    _, m, _, r = two_cycles
+def test_ep_inflow_is_ed_gas():
+    """EP inflow "ed" = well-mixed gas of the matching ED step of the same cycle."""
+    c = experiment_cycle(ep_gas="ed")
+    m = psa_model(c, N=10)
+    r = CycleRunner(m, c).run_cycle(m.y0)
     for k in (1, 2, 3):
         ed, ep = np.clip(r.steps[f"ED{k}"][1], 0, None), -r.steps[f"EP{k}"][1]   # out / in at z = L
         assert ep.sum() > 0 and np.allclose(ep / ep.sum(), ed / ed.sum(), atol=1e-6)
+
+
+def test_frozen_baseline_defaults():
+    """experiment_cycle() defaults = frozen baseline of the step-3 closure: author's beta_P, EP = pure H2."""
+    from h2psa.isotherms import load_yaml
+    from h2psa.cycle import PARAMS
+    c = experiment_cycle()
+    fit = load_yaml(PARAMS / "compact_column_lopes2010.yaml")["fitted"]
+    assert c.ep_gas == "h2" and c.beta_P == fit["pressure_decay_rate_author_sims"]["value"]
 
 
 def test_ep_inflow_h2_option():

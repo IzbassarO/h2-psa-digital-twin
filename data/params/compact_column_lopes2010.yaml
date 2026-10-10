@@ -28,13 +28,12 @@ cycle_B_experiment:              # Table 5.4 p.167, Figure 5.7 p.166 (single col
   # ED1-3, Blow: eqs. (5.39)-(5.40); one beta_P for all exponential steps (p.180). EP3-1: eq. (5.45) gives no
   # pressure law; the author's simulated EP pressures are exponential-shaped (Fig. 5.20a p.197), so the same law
   # and beta_P are used. Press: linear, eq. (5.47). beta_P and the purge flow -> fitted: (below).
-  ep_inflow: ed                  # EP inflow composition, NOT stated (eq. 5.45 leaves C_inlet open; no text):
-                                 #   ed = gas collected in the matching ED step (ED1->EP1, ED2->EP2, ED3->EP3),
-                                 #   consistent with eq. (5.49), which does not charge EP gas to the product;
-                                 #   h2 = pure H2 (sensitivity). Inflows enter at the feed temperature.
-                                 #   ed is the PRE-DECLARED BASELINE of the first step-3 comparison. The corrected
-                                 #   model (step-3 decision 2026-10-10) uses ep_gas = h2 with beta_P =
-                                 #   fitted.pressure_decay_rate_author_sims; ed stays in the uncertainty band.
+  ep_inflow: h2                  # EP inflow composition, NOT stated (eq. 5.45 leaves C_inlet open; no text).
+                                 #   FROZEN BASELINE (step-3 closure, 2026-10-10): h2 = pure H2, with beta_P =
+                                 #   fitted.pressure_decay_rate_author_sims. Scenario: ed = gas collected in the
+                                 #   matching ED step (ED1->EP1, ...). The pre-declared step-3 baseline used ed with
+                                 #   beta_P = fitted.pressure_decay_rate (pinned in scripts/run_psa.py).
+  beta_P_source: pressure_decay_rate_author_sims   # key in fitted: used by default (frozen baseline)
   purge_flow: "NOT reported (pure H2 at z = L); see fitted: below"
 
 performance_definitions: eq. (5.48)-(5.50) p.180   # purity, recovery, productivity

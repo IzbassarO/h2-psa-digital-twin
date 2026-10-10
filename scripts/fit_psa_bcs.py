@@ -80,7 +80,7 @@ def fit_beta(c, t, P, steps=EXP_STEPS):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    c = experiment_cycle(beta_P=np.nan, purge_flow=np.nan)
+    c = experiment_cycle(beta_P=np.nan, purge_flow=np.nan, ep_gas="ed")
     e = read("psa_c1_P")
     e = e[~((e.time_s > 180) & (e.time_s < 200) & (e.pressure_bar > 4))]   # legend symbol
     t, P = e.time_s.values, e.pressure_bar.values
@@ -126,7 +126,7 @@ def main():
     def model_h2(F):
         """Model H2 flow leaving at z = 0 [mmol/s] at the GC sample times of the cycle-1 purge."""
         if F not in cache:
-            cyc = experiment_cycle(beta_P=beta, purge_flow=F)
+            cyc = experiment_cycle(beta_P=beta, purge_flow=F, ep_gas="ed")   # as fitted (pre-declared baseline)
             m = psa_model(cyc)
             tr = CycleRunner(m, cyc).run_cycle(m.y0, trace=True, dt_trace=0.5, until="Purge").trace
             s = tr["step"] == "Purge"
