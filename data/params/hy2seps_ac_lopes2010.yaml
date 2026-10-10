@@ -12,6 +12,12 @@ physical:                        # Table 3.10 p.94 ; Table 2.3 p.39
   solid_density: 1939.0          # [kg m-3]
   bet_surface_area: 4.808e5      # [m2 kg-1]
   mean_macropore_diameter: 15.9e-6  # [m], mercury porosimetry p.39
+  bed_porosity_ch3: 0.394        # Table 3.10 p.94 (1.65 cm breakthrough column); ASSUMED to hold in the compact column
+  ldf_factor_macropore: 8        # Omega_m = (k_s+1)(k_s+3) with k_s = 1 (cylindrical extrudates), eq. (3.17) p.77
+  ldf_factor_micropore: 3        # p.98: "K_LDF = 3 Dc/rc2 for activated carbons"
+  tortuosity: 2.0                # p.96: "Assuming a tortuosity value of 2"; Knudsen neglected (macropores >> mean free path)
+  solid_heat_capacity: {value: 880.0, range: [700.0, 1100.0], units: J kg-1 K-1,
+                        note: "NOT reported; ASSUMED equal to the AC5-KS assumption (compact_column_lopes2010.yaml)"}
 
 isotherm:
   model: multisite_langmuir      # Nitta et al., eq. (2.10) p.35: q/qmax = a K P (1 - q/qmax)^a

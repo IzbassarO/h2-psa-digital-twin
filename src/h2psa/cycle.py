@@ -24,7 +24,7 @@ from dataclasses import dataclass, field, replace
 
 import numpy as np
 
-from .column import BC, PARAMS, ColumnModel, Feed, ac5ks_column
+from .column import BC, PARAMS, Column, ColumnModel, Feed, ac5ks_column
 from .isotherms import R, load_yaml
 
 DAY = 86400.0
@@ -98,12 +98,14 @@ def simulation_cycle(row, base: Cycle | None = None) -> Cycle:
                    T_feed=float(row["T_feed_K"]))
 
 
-def psa_model(cycle: Cycle, N: int = 30, group: str = "1-4", **opts) -> ColumnModel:
+def psa_model(cycle: Cycle, N: int = 30, group: str = "1-4", column: Column | None = None, **opts) -> ColumnModel:
     """AC5-KS column with transport group `group` of Table 5.9, initially full of He at T_feed and P_high
     (p.166); the heater holds the ambient side at T_feed (`assumed: ambient_temperature`).
-    opts: mixing, measured_kinetics, thermal (see column.ac5ks_column)."""
-    tr = load_yaml(PARAMS / "ac5ks_lopes2010.yaml")["psa_transport"]["groups"][group]
-    col = ac5ks_column(tr, cycle.T_feed, **opts)
+    opts: mixing, measured_kinetics, thermal (see column.ac5ks_column). column: any other Column (layered bed)."""
+    if column is None:
+        tr = load_yaml(PARAMS / "ac5ks_lopes2010.yaml")["psa_transport"]["groups"][group]
+        column = ac5ks_column(tr, cycle.T_feed, **opts)
+    col = column
     feed = Feed(y=cycle.y_feed, T=cycle.T_feed, flow=cycle.feed_flow, P_out=cycle.P_high)
     return ColumnModel(col, feed, list(cycle.y_feed) + ["He"], N=N, y0={"He": 1.0})
 
@@ -118,12 +120,13 @@ class CycleResult:
 
 
 class CycleRunner:
-    def __init__(self, model: ColumnModel, cycle: Cycle, rtol: float = 1e-6):
+    def __init__(self, model: ColumnModel, cycle: Cycle, rtol: float = 1e-6, w_ads: float | None = None):
+        """w_ads: adsorbent mass for the productivity [kg] (default: the compact unit's AC5-KS charge, Table 5.3)."""
         self.m, self.c, self.rtol = model, cycle, rtol
         self.iH = model.sp.index("H2")
         self.ads = [i for i, s in enumerate(model.sp) if s != "He"]
         cc = load_yaml(PARAMS / "compact_column_lopes2010.yaml")
-        self.w_ads = cc["column"]["adsorbent_mass"]
+        self.w_ads = cc["column"]["adsorbent_mass"] if w_ads is None else w_ads
         self.z_tc = cc["column"]["thermocouples_from_inlet"]
         self.feed_bc = (BC("flow", flow=cycle.feed_flow, y=cycle.y_feed, T=cycle.T_feed),
                         BC("pressure", P=lambda t: cycle.P_high, dPdt=lambda t: 0.0))

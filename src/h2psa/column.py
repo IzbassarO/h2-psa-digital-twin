@@ -50,6 +50,10 @@ class Layer:
     Dp: dict           # macropore diffusivity, m2 s-1
     Dc0: dict          # micropore Dc0/rc2, s-1
     Ea: dict           # micropore activation energy, kJ mol-1
+    Dax: float | None = None   # axial mass dispersion, m2 s-1 (None: the column value)
+    lam: float | None = None   # axial heat dispersion, W m-1 K-1 (None: the column value)
+    hw: float | None = None    # gas-wall film coefficient, W m-2 K-1 (None: the column value)
+    U: float | None = None     # wall-ambient coefficient, W m-2 K-1 (None: the column value)
 
 
 @dataclass
@@ -170,12 +174,21 @@ class ColumnModel:
         self.z = (np.arange(N) + 0.5) * self.dz
         self.A = np.pi * col.d_wi**2 / 4
 
-        # per-cell layer properties
+        # per-cell layer properties; every layer interface must lie on a cell face
         edges = np.cumsum([l.length for l in col.layers])
+        k_face = edges[:-1] / self.dz
+        if np.any(np.abs(k_face - np.round(k_face)) > 1e-6):
+            raise ValueError(f"layer interfaces at {edges[:-1]} m are not on cell faces (dz = {self.dz:.4g} m)")
         lay = np.minimum(np.searchsorted(edges, self.z), len(col.layers) - 1)
+        self.layer_of_cell = lay
         cell = lambda f: np.array([f(col.layers[k]) for k in lay])
+        or_col = lambda name: cell(lambda l: getattr(col, name) if getattr(l, name) is None else getattr(l, name))
+        self.Dax_c, self.lam_c, self.hw_c, self.U_c = or_col("Dax"), or_col("lam"), or_col("hw"), or_col("U")
+
         spc = lambda f: np.array([[f(col.layers[k], s) for k in lay] for s in species])
         self.eps, self.rho_p, self.eps_p = cell(lambda l: l.eps), cell(lambda l: l.rho_p), cell(lambda l: l.eps_p)
+        harm = lambda a: 2 * a[:-1] * a[1:] / (a[:-1] + a[1:])               # face value: harmonic mean
+        self.eDax_f, self.lam_f = harm(self.eps * self.Dax_c), harm(self.lam_c)
         self.Rp, self.Cps, self.a_p = cell(lambda l: l.Rp), cell(lambda l: l.Cps), cell(lambda l: l.a_p)
         self.kf, self.hf = cell(lambda l: l.kf), cell(lambda l: l.hf)
         Om_m, self.Om_c = cell(lambda l: l.Omega_m), cell(lambda l: l.Omega_c)
@@ -304,8 +317,7 @@ class ColumnModel:
         b = 1.75 * (1 - eps) * rho / (eps**3 * dp)
         af, bf = 0.5 * (a[:, :-1] + a[:, 1:]), 0.5 * (b[:, :-1] + b[:, 1:])
         u_int = _ergun(-np.diff(dP, axis=-1) / dz, af, bf)
-        eps_f = 0.5 * (eps[:-1] + eps[1:])
-        J = -eps_f * self.col.Dax * (0.5 * (CT[:, :-1] + CT[:, 1:]))[:, None] * np.diff(yfr, axis=-1) / dz
+        J = -self.eDax_f * (0.5 * (CT[:, :-1] + CT[:, 1:]))[:, None] * np.diff(yfr, axis=-1) / dz
         F = np.empty((B, self.ns, self.N + 1))
         F[..., 1:-1] = u_int[:, None] * _faces(C, u_int[:, None]) + J
         u_end, T_in = np.zeros((B, 2)), np.full((B, 2), np.nan)
@@ -355,15 +367,15 @@ class ColumnModel:
                                  np.where(np.isnan(T_in[:, 1:]), Tg[:, -1:], T_in[:, 1:])], axis=1)
             conv = -0.5 * (u[:, :-1] + u[:, 1:]) * CT * Cp_mix * np.diff(Tf, axis=-1) / dz
             z = np.zeros_like(Tg[:, :1])
-            Qc = np.concatenate([z, col.lam * np.diff(Tg, axis=-1) / dz, z], axis=1)
+            Qc = np.concatenate([z, self.lam_f * np.diff(Tg, axis=-1) / dz, z], axis=1)
             hgs = (1 - eps) * self.a_p * self.hf * (Tg - Tp)
             dTg = (np.diff(Qc, axis=-1) / dz + conv + eps * R * Tg * dC.sum(1) - hgs
-                   - 4 * col.hw / col.d_wi * (Tg - Tw)) / (eps * CT * (Cp_mix - R))  # (5.5)
+                   - 4 * self.hw_c / col.d_wi * (Tg - Tw)) / (eps * CT * (Cp_mix - R))  # (5.5)
             cap = (1 - eps) * (self.eps_p * (self.Cv @ Cm) + self.rho_p * (self.Cv @ q) + self.rho_p * self.Cps)
             dTp = ((1 - eps) * self.eps_p * R * Tp * dCm.sum(1)
                    + (1 - eps) * self.rho_p * (self.dH * dq).sum(1) + hgs) / cap      # (5.8)
-            dTw = (self.alpha_w * col.hw * (Tg - Tw)
-                   - self.alpha_wl * col.U * (Tw - col.T_amb)) / self.rhoCp_w           # (5.11)
+            dTw = (self.alpha_w * self.hw_c * (Tg - Tw)
+                   - self.alpha_wl * self.U_c * (Tw - col.T_amb)) / self.rhoCp_w           # (5.11)
 
         ddP = R * (Tg * dC.sum(1) + CT * dTg) - self.dP_ref(t)                    # P = C_T R Tg
         B = Y.shape[0]
@@ -511,3 +523,53 @@ def compact_breakthrough(run: int, N: int = 60, *, mixing: str | None = None, me
     flow = std["P_bar"] * 1e5 * bt["flow_rate_std"] / (R * std["T"])
     feed = Feed(y=r["y"], T=bt["feed_temperature"], flow=flow, P_out=bt["pressure_bar"] * 1e5)
     return ColumnModel(col, feed, list(r["y"]) + ["He"], N=N, y0={"He": 1.0}, **kw)
+
+
+# ---------------------------------------------------------------------- layered bed (step 4)
+HY2SEPS = {"AC": "hy2seps_ac_lopes2010.yaml", "ZEO": "hy2seps_zeo_lopes2010.yaml"}
+
+
+def hy2seps_transport(kind: str, y: dict, T: float, P: float, u0: float, d_wi: float, e_wall: float, L: float,
+                      species: list, dax: str = "eq5.20") -> dict:
+    """Transport coefficients of a HY2SEPS layer from the thesis correlations (eqs 5.17-5.35) at inlet
+    conditions (feed composition y, T [K], P [Pa], superficial velocity u0 [m/s])."""
+    from .transport import Gas, coefficients
+    ph = load_yaml(PARAMS / HY2SEPS[kind])["physical"]
+    g = Gas(species)
+    return coefficients(g, [y.get(s, 0.0) for s in species], T, P, u0, dp=ph["pellet_diameter"],
+                        eps=ph["bed_porosity_ch3"], d_wi=d_wi, e_wall=e_wall, L=L, tau=ph["tortuosity"], dax=dax)
+
+
+def hy2seps_layer(kind: str, length: float, tr: dict) -> Layer:
+    """HY2SEPS-AC ("AC") or HY2SEPS-ZEO ("ZEO") layer: multisite Langmuir (Tables 2.7, 2.8), micropore/crystal
+    kinetics refitted to the measured Dc/rc2 (Tables 3.12, 3.15; errata E5 convention), particle properties
+    (Tables 3.10, 3.13), transport coefficients `tr` (Dax, lambda, kf, hf, hw, U, Dp per species)."""
+    from .isotherms import MultisiteLangmuir
+    d = load_yaml(PARAMS / HY2SEPS[kind])
+    ph = d["physical"]
+    kin = d["micropore_kinetics" if kind == "AC" else "crystal_kinetics"]
+    mic = {s: arrhenius_fit(v["Dc_over_rc2"]) for s, v in kin.items() if s != "units"}
+    asm = load_yaml(PARAMS / "compact_column_lopes2010.yaml")["assumed"]
+    Rp = ph["pellet_diameter"] / 2
+    return Layer(length=length, eps=ph["bed_porosity_ch3"], iso=MultisiteLangmuir.from_yaml(PARAMS / HY2SEPS[kind]),
+                 rho_p=ph["particle_density"], eps_p=ph["pellet_porosity"], Rp=Rp,
+                 Omega_m=ph["ldf_factor_macropore"], Omega_c=ph["ldf_factor_micropore"],
+                 Cps=ph["solid_heat_capacity"]["value"], a_p=asm["particle_specific_area"]["value"] / Rp,
+                 kf=tr["kf"], hf=tr["hf"], Dp=tr["Dp"], Dc0={k: v[0] for k, v in mic.items()},
+                 Ea={k: v[1] for k, v in mic.items()}, Dax=tr["Dax"], lam=tr["lambda"], hw=tr["hw"], U=tr["U"])
+
+
+def layered_column(f_ac: float, y: dict, T: float, P: float, flow: float, species: list, *, L: float, d_wi: float,
+                   e_wall: float, Cw: float, T_amb: float, dax: str = "eq5.20", transport: dict | None = None) -> Column:
+    """HY2SEPS-AC (feed end, fraction f_ac of the bed length L) + HY2SEPS-ZEO (product end). Transport
+    coefficients per layer from the correlations at the feed conditions, unless `transport` gives
+    {"AC": tr, "ZEO": tr} explicitly. Zero-length layers are dropped."""
+    u0 = flow * R * T / (P * np.pi * d_wi**2 / 4)
+    layers = []
+    for kind, length in (("AC", f_ac * L), ("ZEO", (1 - f_ac) * L)):
+        if length <= 1e-12:
+            continue
+        tr = (transport or {}).get(kind) or hy2seps_transport(kind, y, T, P, u0, d_wi, e_wall, L, species, dax)
+        layers.append(hy2seps_layer(kind, length, tr))
+    l0 = layers[0]
+    return Column(d_wi=d_wi, e_wall=e_wall, Cw=Cw, Dax=l0.Dax, lam=l0.lam, hw=l0.hw, U=l0.U, T_amb=T_amb, layers=layers)

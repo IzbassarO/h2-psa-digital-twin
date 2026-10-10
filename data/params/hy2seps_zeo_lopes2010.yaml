@@ -12,6 +12,12 @@ physical:                        # Table 3.13 p.101 ; Table 2.4 p.40
   particle_density: 1126.0       # [kg m-3]
   solid_density: 2267.0          # [kg m-3]
   bet_surface_area: 4.339e5      # [m2 kg-1]
+  bed_porosity_ch3: 0.391        # Table 3.13 p.101 (1.65 cm breakthrough column); ASSUMED to hold in the compact column
+  ldf_factor_macropore: 8        # Omega_m = (k_s+1)(k_s+3) with k_s = 1 (cylindrical extrudates), eq. (3.17) p.77
+  ldf_factor_micropore: 15       # p.104: "K_LDF = 15 Dc/rc2 for zeolites" (spherical crystals)
+  tortuosity: 2.0                # p.102: "macropore resistance was smaller than 3% ... for a tortuosity value of 2"
+  solid_heat_capacity: {value: 920.0, range: [800.0, 1100.0], units: J kg-1 K-1,
+                        note: "NOT reported; ASSUMED (typical zeolite pellets)"}
 
 isotherm:
   model: multisite_langmuir      # eq. (2.10) p.35, K in kPa-1
