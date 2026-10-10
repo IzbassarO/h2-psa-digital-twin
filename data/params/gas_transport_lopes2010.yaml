@@ -1,0 +1,24 @@
+# Gas transport properties for the correlations of Lopes (2010), eqs (3.6)-(3.13), (3.23)-(3.26), (5.17)-(5.35).
+# Source: Lopes (2010) PhD thesis, Table 3.1 p.76 (from Bird, Stewart & Lightfoot 2002). Printed page numbers.
+
+lennard_jones:                   # Table 3.1 p.76: molar mass, collision diameter sigma, well depth eps/k
+  units: {M: g mol-1, sigma: angstrom, eps_k: K}
+  He:  {M: 4.003,  sigma: 2.576, eps_k: 10.2}
+  H2:  {M: 2.016,  sigma: 2.915, eps_k: 38.0}
+  CO2: {M: 44.010, sigma: 3.996, eps_k: 190.0}
+  CH4: {M: 16.043, sigma: 3.780, eps_k: 154.0}
+  CO:  {M: 28.010, sigma: 3.590, eps_k: 110.0}
+  N2:  {M: 28.014, sigma: 3.667, eps_k: 99.8}
+
+# Thermal conductivity of the gas: the thesis cites Bird et al. (2002) for "density, viscosity, and thermal
+# conductivity" (p.171) without the formula. Used here: modified Eucken k_i = (Cp_i + 5/4 R) mu_i / M_i
+# (Bird et al. 2002, eq. 9.3-15) and the mixture rule k = sum_i y_i k_i / sum_j y_j Phi_ij with Phi_ij of
+# eq. (3.26) (Bird et al. 2002, eq. 9.3-17). Cp_i from gas_properties_nist.yaml. ASSUMED (data/PROVENANCE.md).
+
+external:                        # outside the column, for Churchill-Chu, eqs (5.32)-(5.35). NOT reported: ASSUMED
+  air_300K: {k: 0.0263, nu: 15.89e-6, alpha: 22.5e-6, Pr: 0.707,
+             source: "Incropera & DeWitt, Fundamentals of Heat and Mass Transfer, Table A.4 (air, 1 atm, 300 K)"}
+  wall_conductivity: {value: 14.9, units: W m-1 K-1, source: "Incropera & DeWitt Table A.1, AISI 304, 300 K"}
+  wall_minus_ambient: {value: 10.0, range: [2.0, 30.0], units: K,
+                       note: "T_w - T_inf in Gr (eq. 5.34); not reported; the compact column is heated (Fig. 5.6)"}
+  gravity: 9.8                   # p.173
