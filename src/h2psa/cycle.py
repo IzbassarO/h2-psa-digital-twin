@@ -127,6 +127,7 @@ class CycleRunner:
         self.ads = [i for i, s in enumerate(model.sp) if s != "He"]
         cc = load_yaml(PARAMS / "compact_column_lopes2010.yaml")
         self.w_ads = cc["column"]["adsorbent_mass"] if w_ads is None else w_ads
+        self.retries = 0                       # steps re-solved with another rtol (see _solve)
         self.z_tc = cc["column"]["thermocouples_from_inlet"]
         self.feed_bc = (BC("flow", flow=cycle.feed_flow, y=cycle.y_feed, T=cycle.T_feed),
                         BC("pressure", P=lambda t: cycle.P_high, dPdt=lambda t: 0.0))
@@ -178,6 +179,17 @@ class CycleRunner:
         dN = np.diff(Ni, axis=1)
         return 0.5 * (edges[1:] + edges[:-1]), dN / np.maximum(dN.sum(0), 1e-300)
 
+    def _solve(self, dur, n_out, y):
+        """One step; if BDF stops on a step-size underflow, retry with rtol / 10, then rtol x 10 (counted in
+        self.retries; the tolerance changes only for that step)."""
+        for rtol in (self.rtol, 0.1 * self.rtol, 10 * self.rtol):
+            try:
+                return self.m.solve(dur, n_out=n_out, rtol=rtol, y0=y)
+            except RuntimeError:
+                if rtol == 10 * self.rtol:
+                    raise
+                self.retries += 1
+
     def _pressures(self, y):
         """Cell pressures [Pa] of a state integrated with the current reference."""
         N, ns = self.m.N, self.m.ns
@@ -207,7 +219,7 @@ class CycleRunner:
             n_out = max(int(round(dur / dt_trace)) + 1, 2) if trace else 2
             if hist and name.startswith("ED"):
                 n_out = max(n_out, int(round(4 * dur)) + 1)
-            r = m.solve(dur, n_out=n_out, rtol=self.rtol, y0=y)
+            r = self._solve(dur, n_out, y)
             y = r.y_end
             self.ref = (m.P_ref, dur)
             moles[name] = r.moles
@@ -297,5 +309,5 @@ class CycleRunner:
         traces[n + 1] = last.trace
         profs[n + 1] = last.profiles
         return dict(history=hist, css=css, cycles=n, y_end=last.y_end, traces=traces, perf=last.perf,
-                    profiles=profs, step_moles=last.steps,
+                    profiles=profs, step_moles=last.steps, retries=self.retries,
                     runtime_s=time.perf_counter() - t0, cpu_s=time.process_time() - c0)

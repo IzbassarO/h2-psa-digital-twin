@@ -119,3 +119,21 @@ def test_profiles_split_inventory_by_phase(two_cycles):
     V, e = m.A * m.dz, m.eps
     split = (V * (e * p["C"] + (1 - e) * (m.eps_p * p["Cm"] + m.rho_p * p["q"]))).sum(1)
     assert np.allclose(split, m.inventory(run.run_cycle(r.y_end, until="Blow").y_end, c.t_blow), rtol=1e-9)
+
+
+def test_solve_retries_with_other_rtol():
+    """A step that fails with the default rtol is re-solved with rtol / 10, and the retry is counted."""
+    c = experiment_cycle()
+    m = psa_model(c, N=10)
+    run = CycleRunner(m, c)
+    seen, solve = [], m.solve
+
+    def flaky(dur, n_out, rtol, y0):
+        seen.append(rtol)
+        if len(seen) == 1:
+            raise RuntimeError("Required step size is less than spacing between numbers.")
+        return solve(dur, n_out=n_out, rtol=rtol, y0=y0)
+
+    m.solve = flaky
+    run._solve(1.0, 2, m.y0)
+    assert seen == [run.rtol, 0.1 * run.rtol] and run.retries == 1
