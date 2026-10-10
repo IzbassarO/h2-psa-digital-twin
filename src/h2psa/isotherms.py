@@ -334,26 +334,27 @@ class MultisiteLangmuir:
     def equilibrium(self, P: np.ndarray, T: np.ndarray) -> np.ndarray:
         """Vectorised: P (n, k) [bar] in self.names order, T (n,) [K] -> q (n, k) [mol/kg].
 
-        With s = 1 - sum(theta): theta_i = a_i K_i P_i s^a_i, so s solves the monotone scalar equation
-        f(s) = s - 1 + sum_i a_i K_i P_i s^a_i = 0 on (0, 1]; safeguarded Newton per state.
+        With s = 1 - sum(theta): theta_i = a_i K_i P_i s^a_i, so s in (0, 1] solves f = s - 1 + sum_i c_i s^a_i = 0.
+        Newton in u = ln s: f(u) is convex and increasing, so the iteration converges monotonically from the
+        right (u is capped at 0); warm start from the previous call with the same shape.
         """
         sp = [self.species[n] for n in self.names]
         T = np.asarray(T, float)[:, None]
-        a = np.array([s.a for s in sp])
-        c = a * np.array([s.K_inf for s in sp]) * np.exp(np.array([s.minus_dH for s in sp]) * 1e3 / (R * T)) \
+        a = np.array([s_.a for s_ in sp])
+        c = a * np.array([s_.K_inf for s_ in sp]) * np.exp(np.array([s_.minus_dH for s_ in sp]) * 1e3 / (R * T)) \
             * np.maximum(P, 0.0) * 100.0
-        lo, hi, s = np.zeros(len(T)), np.ones(len(T)), np.ones(len(T))
+        cache = self.__dict__.setdefault("_u_cache", {})
+        u = cache.get(len(T))
+        u = np.zeros(len(T)) if u is None else u.copy()
         for _ in range(100):
-            f = s - 1 + (c * s[:, None] ** a).sum(1)
-            lo, hi = np.where(f < 0, s, lo), np.where(f >= 0, s, hi)
-            fp = 1 + (c * a * s[:, None] ** (a - 1)).sum(1)
-            sn = s - f / fp
-            sn = np.where((sn <= lo) | (sn >= hi), 0.5 * (lo + hi), sn)
-            if np.abs(sn - s).max() < 1e-14:
-                s = sn
+            t = c * np.exp(a * u[:, None])
+            s = np.exp(u)
+            du = -(s - 1 + t.sum(1)) / (s + (a * t).sum(1))
+            u = np.minimum(u + du, 0.0)
+            if np.abs(du).max() < 1e-13:
                 break
-            s = sn
-        return np.array([s_.q_max for s_ in sp]) * c * s[:, None] ** a
+        cache[len(T)] = u
+        return np.array([s_.q_max for s_ in sp]) * c * np.exp(a * u[:, None])
 
 
 class Linear:

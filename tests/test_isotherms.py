@@ -2,10 +2,12 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from h2psa.isotherms import Virial
 
-YAML = Path(__file__).resolve().parents[1] / "data" / "params" / "ac5ks_lopes2010.yaml"
+PARAMS = Path(__file__).resolve().parents[1] / "data" / "params"
+YAML = PARAMS / "ac5ks_lopes2010.yaml"
 # H2 CO2 CO CH4 N2 partial pressures [bar]: run-5 feed, run-1 binary, 80 % CO2 (N2 trace beyond its psi_max), PSA feed
 STATES = np.array([[3.65, 1.15, 0.06, 0.105, 0.035], [3.5, 1.5, 0, 0, 0], [1.0, 4.0, 0, 0, 0.01],
                    [3.95, 0.85, 0.06, 0.105, 0.035]])
@@ -47,3 +49,19 @@ def test_mixing_rules_agree_in_the_henry_limit_and_bracket_h2():
     pure = [nc.loading_pure("H2", p, T) for p, T in zip(STATES[:, 0], TEMPS)]
     assert np.allclose(q["noncompetitive_h2"], pure, rtol=1e-9)
     assert (q["taqvi_levan"] < q["iast"]).all() and (q["iast"] < q["noncompetitive_h2"]).all()
+
+
+@pytest.mark.parametrize("name", ["hy2seps_ac_lopes2010.yaml", "hy2seps_zeo_lopes2010.yaml"])
+def test_multisite_langmuir_vectorised_matches_scalar_solver(name):
+    """Log-space Newton (with warm start from a very different state) = fsolve on the Nitta equations."""
+    from h2psa.isotherms import MultisiteLangmuir
+    iso = MultisiteLangmuir.from_yaml(PARAMS / name)
+    y = {"H2": 0.79, "CO2": 0.17, "CH4": 0.021, "CO": 0.012, "N2": 0.007}
+    states = [(0.01, 303.0), (1.0, 303.0), (5.0, 303.0), (10.0, 323.0), (7.0, 343.0)]
+    P = np.array([[y[n] * Pt for n in iso.names] for Pt, _ in states])
+    T = np.array([T for _, T in states])
+    iso.equilibrium(P[::-1] * 0.0, T)                        # prime the warm-start cache with q = 0 states
+    q = iso.equilibrium(P, T)
+    for k, (Pt, Tk) in enumerate(states):
+        ref = iso.loading_mix(y, Pt, Tk)
+        assert np.allclose(q[k], [ref[n] for n in iso.names], rtol=1e-8, atol=1e-12)
