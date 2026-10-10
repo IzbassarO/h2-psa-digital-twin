@@ -87,6 +87,13 @@ fitted:                          # step 3 (2026-10-09); scripts/fit_psa_bcs.py. 
                         data: "Fig. 5.18a cycle-1 pressure history (digitised), steps ED1-3, Blow, EP3-1",
                         objective: "sum over the 7 steps of the mean squared pressure residual (equal step weights); interval: objective <= min x (1 + 1/6)",
                         note: "fitted alone, ED1-3 give 4.5-9.5 s-1 and Blow, EP3-1 0.08-0.12 s-1: one constant (p.180) cannot follow both"}
+  pressure_decay_rate_per_step: {ED: 7.33, Blow: 0.078, EP: 0.087, units: s-1,
+                        data: "Fig. 5.18a, as pressure_decay_rate; one constant per step type (ED1-3, Blow, EP3-1)",
+                        objective: "same objective: 0.048 bar2 (single constant: 1.199); rms per step 0.03-0.16 bar",
+                        note: "hypothesis (ii) of the step-3 verification (scripts/fit_psa_bcs.py --no-purge)"}
+  pressure_decay_rate_author_sims: {value: 0.102, interval: [0.099, 0.103], units: s-1,
+                        data: "Fig. 5.20a (author's simulation 13 at CSS, digitised): ED1-3, Blow, EP3-1; each step alone 0.09-0.11",
+                        note: "verification target (author's model), not the experiment; one constant for all exponential steps, EP included"}
   purge_flow:          {value: 0.000261, sd: 3.9e-05, units: mol s-1,
                         data: "Fig. 5.19 1.a, H2 molar flow leaving at z = 0 during the cycle-1 purge (3 GC samples)",
                         objective: "least squares, baseline model (E7 kinetics, taqvi_levan, assumed thermal, group 1-4, N = 30)"}

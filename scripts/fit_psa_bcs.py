@@ -14,6 +14,7 @@ Writes results/step3/fit_bcs.csv and prints the `fitted:` block for compact_colu
 from __future__ import annotations
 
 import datetime
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -33,7 +34,8 @@ def read(name):
 
 
 def pressure_law(c, beta, t):
-    """Pressure [bar] imposed at the open end over one cycle (laws of cycle.py), start P_high."""
+    """Pressure [bar] imposed at the open end over one cycle (laws of cycle.py), start P_high.
+    beta: one constant, or {"ED": .., "Blow": .., "EP": ..}."""
     P, t0, out = c.P_high, 0.0, np.full(len(t), np.nan)
     for name, dur, k in c.steps:
         s = (t >= t0) & (t < t0 + dur)
@@ -46,8 +48,9 @@ def pressure_law(c, beta, t):
             out[s], P = P + (c.P_high - P) * tau / dur, c.P_high
         else:
             end = c.P_low if name == "Blow" else c.P_inter[k - 1]
-            out[s] = end + (P - end) * np.exp(-beta * tau)
-            P = end + (P - end) * np.exp(-beta * dur)
+            b = beta if np.isscalar(beta) else beta["ED" if name.startswith("ED") else "EP" if name.startswith("EP") else name]
+            out[s] = end + (P - end) * np.exp(-b * tau)
+            P = end + (P - end) * np.exp(-b * dur)
         t0 += dur
     return out / 1e5
 
@@ -91,11 +94,28 @@ def main():
         rows.append(dict(quantity="beta_P", case=f"{s} alone", value=b1, objective=o1,
                          rms_bar_at_common_beta=rms, n=(st == s).sum()))
         print(f"  {s:5s} alone: beta {b1:.3f} s-1; rms at common beta {rms:.3f} bar (n={(st == s).sum()})")
+    # hypothesis (ii): one constant per step type, still fitted only to Fig. 5.18a
+    sel = np.isin(st, EXP_STEPS)
+    w = np.array([1.0 / np.sqrt((st[sel] == s).sum()) for s in st[sel]])
+    kinds = ("ED", "Blow", "EP")
+    g = least_squares(lambda x: w * (pressure_law(c, dict(zip(kinds, np.exp(x))), t[sel]) - P[sel]),
+                      np.log([1.0, 0.12, 0.1]), bounds=(np.log(1e-3), np.log(50.0)))
+    bs = dict(zip(kinds, np.exp(g.x)))
+    print(f"per step type: " + ", ".join(f"{k} {v:.3f}" for k, v in bs.items()) + f" s-1 (objective {2 * g.cost:.4f} bar2)")
+    for k, v in bs.items():
+        rows.append(dict(quantity="beta_P", case=f"per step type: {k}", value=v, objective=2 * g.cost))
+    for s in EXP_STEPS:
+        rms = np.sqrt(np.mean((pressure_law(c, bs, t[st == s]) - P[st == s]) ** 2))
+        rows.append(dict(quantity="beta_P", case=f"per step type, rms in {s}", rms_bar_at_common_beta=rms, n=(st == s).sum()))
+        print(f"  {s:5s} rms {rms:.3f} bar")
     a = read("psa_c1_P_authorsim")       # the author's simulated line (stroke-outline vertices), for context
     ab, _, _ = fit_beta(c, a.time_s.values, a.pressure_bar.values)
     rows.append(dict(quantity="beta_P", case="author's simulated line (context only)", value=ab))
     print(f"  author's simulated pressure line: beta {ab:.3f} s-1 (context only)")
 
+    if "--no-purge" in sys.argv:
+        pd.DataFrame(rows).to_csv(OUT / "fit_bcs_beta.csv", index=False)
+        return
     # purge flow from the cycle-1 H2 outflow at z = 0 during the purge
     f = read("psa_c1_flow")
     names = [n for n, _, _ in c.steps]
@@ -129,6 +149,8 @@ def main():
     today = datetime.date.today().isoformat()
     print(f"""
 fitted:                          # step 3 ({today}); scripts/fit_psa_bcs.py. Not used: purity, recovery, Table 5.10
+  pressure_decay_rate_per_step: {{ED: {bs["ED"]:.4g}, Blow: {bs["Blow"]:.4g}, EP: {bs["EP"]:.4g}, units: s-1,
+                        data: "Fig. 5.18a, as pressure_decay_rate", note: "hypothesis (ii) of the step-3 verification"}}
   pressure_decay_rate: {{value: {beta:.4g}, interval: [{lo:.3g}, {hi:.3g}], units: s-1,
                         data: "Fig. 5.18a cycle-1 pressure history (digitised), steps ED1-3, Blow, EP3-1",
                         objective: "sum over the 7 steps of the mean squared pressure residual (equal step weights); interval: objective <= min x (1 + 1/6)",

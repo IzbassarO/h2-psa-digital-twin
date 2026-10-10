@@ -47,6 +47,26 @@ the pressure-law rate constant beta_P (not reported) is fitted only to the measu
 neither uses purity or recovery. The EP inflow composition is not stated in the thesis (eq. 5.45): the gas of the
 matching ED step is used, pure H2 is the sensitivity case (`cycle_B_experiment.ep_inflow`).
 
+Inferred modelling choices from reproducing the author's PSA simulations (step 3 follow-up, 2026-10-09;
+verification against Table 5.10 and Figs 5.20-5.23 only, never the experiment; details in
+`docs/validation/step3.md`):
+
+| choice | value | basis | evidence |
+|---|---|---|---|
+| beta_P in the author's simulations | 0.102 s-1, one constant for ED, Blow and EP | B (+ A, p.180 "same exponential decay rate constant") | fit to the author's simulated sim-13 pressure, Fig. 5.20a (`fitted.pressure_decay_rate_author_sims`); each step alone 0.09-0.11 s-1 |
+| EP inflow in the author's simulations | pure H2 | B | C_inlet not defined in eq. 5.45; with pure H2 our sims 1, 2, 13 impurity is 1.2-2.4x Table 5.10 vs 7-64x with ED gas; N2 profiles of Figs 5.21e, 5.23b |
+| purity | feed components only (He excluded) | A | eq. 5.48 |
+
+Not adopted: per-step-type beta_P fitted to Fig. 5.18a (ED 7.33, Blow 0.078, EP 0.087 s-1; describes the
+experiment's valves, moves the model away from the author); ED gas variants for EP. Unresolved: our column releases
+15-40 % more gas per step than the author's at identical pressures and loadings (recovery 4 pp below Table 5.10).
+
+**The PSA experiment's performance values are simulated.** p.256: "a hydrogen recovery of 81.6% was obtained in the
+PSA experiment with a H2 purity of 99.98054% contaminated with 63 ppm of CO (simulated values)". The purity, CO,
+recovery and productivity in `data/benchmarks/lopes2010_psa_experiment.csv` are therefore the author's simulation of
+the experiment (values unchanged; see `data/benchmarks/README.md`). Measured: outlet flows at the GC sampling times
+(Fig. 5.19), pressure (Fig. 5.18a), temperatures (Figs 5.18b, 5.19).
+
 ## Known limitations of the data
 
 * Isotherms are fitted on 0–7 bar. In the industrial scenario (NETL, 24.5 bar) the H2 partial pressure
