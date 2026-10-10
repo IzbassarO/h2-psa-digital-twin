@@ -98,3 +98,13 @@ def test_ed_history_bins_equal_moles():
 def test_beta_per_step_type():
     c = experiment_cycle(beta_steps={"ED": 5.0, "Blow": 0.1, "EP": 0.2})
     assert (c.beta("ED2"), c.beta("Blow"), c.beta("EP3"), c.beta("Feed")) == (5.0, 0.1, 0.2, c.beta_P)
+
+
+def test_profiles_split_inventory_by_phase(two_cycles):
+    """Step-end profiles keep C, Cm and q; interparticle + macropore + adsorbed moles = the bed inventory
+    (basis of the step-3 gas-holdup diagnostic)."""
+    c, m, run, r = two_cycles
+    p = run.run_cycle(r.y_end, profiles=True).profiles["Blow"]
+    V, e = m.A * m.dz, m.eps
+    split = (V * (e * p["C"] + (1 - e) * (m.eps_p * p["Cm"] + m.rho_p * p["q"]))).sum(1)
+    assert np.allclose(split, m.inventory(run.run_cycle(r.y_end, until="Blow").y_end, c.t_blow), rtol=1e-9)

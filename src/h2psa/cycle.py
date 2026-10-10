@@ -215,8 +215,8 @@ class CycleRunner:
                 out = np.clip(r.moles[1], 0.0, None)
                 tank["product"] = dict(zip(m.sp, out / out.sum()))
             if profiles:
-                C, _, q, Tg, *_ = m._unpack(y, dur)
-                prof[name] = dict(z=m.z, C=C, q=q, Tg=Tg)
+                C, Cm, q, Tg, *_ = m._unpack(y, dur)
+                prof[name] = dict(z=m.z, C=C, Cm=Cm, q=q, Tg=Tg)
             if trace:
                 tr.append(dict(step=name, t=t_cyc + r.t, out_L=r.outlet_flow, in_0=r.inlet_flow,
                                P0=r.P[0], PL=r.P[-1], T=np.array([r.T_at(z) for z in self.z_tc])))
