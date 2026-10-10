@@ -29,6 +29,18 @@ pytest
 - Source PDFs are in `literature/` (git-ignored). Never commit them.
 - Load YAML only via `h2psa.isotherms.load_yaml` — plain `yaml.safe_load` reads `9.71e5` as a string.
 
+## Measured vs simulated (Lopes 2010, ch. 5)
+
+- The PSA experiment's performance numbers (81.6 % recovery, 99.98054 % purity, 63 ppm CO, 101.1 mol/kg/day)
+  are the author's SIMULATED values (p.256, practice stated on p.241). Treat them as the author's 18th simulation
+  (verification, with Table 5.10), never as measurements. Earlier step-3 documents called them "experimental" by
+  mistake.
+- Measured cyclic data: outlet molar flows at the GC sample times, cycles 1 and 37 (Fig. 5.19); pressure,
+  cycle 1 (Fig. 5.18a); thermocouples, cycles 1-10 (Fig. 5.18b) and cycles 1, 37 (Fig. 5.19). Validation means
+  these.
+- No input from the original author is available: EP inflow composition and gas-holdup treatment are declared
+  assumptions (`data/PROVENANCE.md`), carried as an uncertainty band.
+
 ## Code rules
 
 - Package lives in `src/h2psa`.

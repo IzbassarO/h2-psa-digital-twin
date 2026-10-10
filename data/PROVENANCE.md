@@ -44,28 +44,49 @@ adopted: the `assumed:` values are still used and no `calibrated:` block exists.
 PSA boundary conditions (step 3, 2026-10-09; `fitted:` in `compact_column_lopes2010.yaml`, `scripts/fit_psa_bcs.py`):
 the pressure-law rate constant beta_P (not reported) is fitted only to the measured cycle-1 pressure history
 (Fig. 5.18a) and the purge H2 flow (not reported) only to the H2 flow leaving during the cycle-1 purge (Fig. 5.19);
-neither uses purity or recovery. The EP inflow composition is not stated in the thesis (eq. 5.45): the gas of the
-matching ED step is used, pure H2 is the sensitivity case (`cycle_B_experiment.ep_inflow`).
+neither uses purity or recovery. The EP inflow composition is not stated in the thesis (eq. 5.45). The
+pre-declared baseline used the gas of the matching ED step (`cycle_B_experiment.ep_inflow: ed`); the corrected model
+of the step-3 decision uses pure H2 and the author's beta_P (below; `COR` in `scripts/run_psa.py`).
 
-Inferred modelling choices from reproducing the author's PSA simulations (step 3 follow-up, 2026-10-09;
-verification against Table 5.10 and Figs 5.20-5.23 only, never the experiment; details in
-`docs/validation/step3.md`):
+Inferred modelling choices from reproducing the author's PSA simulations (step 3, 2026-10-09/10; verification
+against Table 5.10, Figs 5.20-5.23 and the author's simulation of the experiment (p.256), never against measured
+data; basis A = supported by the thesis text, B = needed to reproduce the author's simulations; details in
+`docs/validation/step3.md`). Adopted for the corrected model (step-3 decision 2026-10-10):
 
 | choice | value | basis | evidence |
 |---|---|---|---|
-| beta_P in the author's simulations | 0.102 s-1, one constant for ED, Blow and EP | B (+ A, p.180 "same exponential decay rate constant") | fit to the author's simulated sim-13 pressure, Fig. 5.20a (`fitted.pressure_decay_rate_author_sims`); each step alone 0.09-0.11 s-1 |
-| EP inflow in the author's simulations | pure H2 | B | C_inlet not defined in eq. 5.45; with pure H2 our sims 1, 2, 13 impurity is 1.2-2.4x Table 5.10 vs 7-64x with ED gas; N2 profiles of Figs 5.21e, 5.23b |
+| beta_P | 0.102 s-1, one constant for ED, Blow and EP | B (+ A, p.180 "same exponential decay rate constant") | fit to the author's simulated sim-13 pressure, Fig. 5.20a (`fitted.pressure_decay_rate_author_sims`); each step alone 0.09-0.11 s-1. Checked, not fitted, against the measured pressure (Fig. 5.18a) |
+| EP inflow | pure H2 | B | C_inlet not defined in eq. 5.45; with pure H2 our sims 1, 2, 13 impurity is 1.2-2.4x Table 5.10 vs 7-64x with ED gas; N2 profiles of Figs 5.21e, 5.23b |
 | purity | feed components only (He excluded) | A | eq. 5.48 |
 
 Not adopted: per-step-type beta_P fitted to Fig. 5.18a (ED 7.33, Blow 0.078, EP 0.087 s-1; describes the
-experiment's valves, moves the model away from the author); ED gas variants for EP. Unresolved: our column releases
-15-40 % more gas per step than the author's at identical pressures and loadings (recovery 4 pp below Table 5.10).
+experiment's valves, moves the model away from the author); ED gas variants for EP (kept in the band).
 
-**The PSA experiment's performance values are simulated.** p.256: "a hydrogen recovery of 81.6% was obtained in the
-PSA experiment with a H2 purity of 99.98054% contaminated with 63 ppm of CO (simulated values)". The purity, CO,
-recovery and productivity in `data/benchmarks/lopes2010_psa_experiment.csv` are therefore the author's simulation of
-the experiment (values unchanged; see `data/benchmarks/README.md`). Measured: outlet flows at the GC sampling times
-(Fig. 5.19), pressure (Fig. 5.18a), temperatures (Figs 5.18b, 5.19).
+### Assumptions not resolvable from the source
+
+No input from the original author is available. The following are declared modelling assumptions; both
+alternatives of each are carried in the uncertainty band of step 3 (and later steps), and neither is chosen by
+matching data.
+
+| assumption | used | alternative in the band | why it cannot be resolved |
+|---|---|---|---|
+| EP inflow composition | pure H2 (reproduces the author's simulations, basis B) | gas of the matching ED step (tank emulation of the partner bed) | eq. 5.45 leaves C_inlet open; the text never says how a single column was equalised (Fig. 5.5 shows a second column and a tank) |
+| gas holdup | interparticle eps C + macropore (1 - eps) eps_p C_m with eps_p = 0.627 (total pellet porosity, Table 4.5) and absolute loadings q (eq. 2.2, p.31), i.e. eqs 5.3 and 5.6 as printed | pore gas net of the adsorbed-phase volume (liquid densities, p.31): changes the H2 released per step by < 1.5 %; and the eps_p = 0.35 diagnostic | at identical pressures and loadings the author's model releases 25-50 % less H2 per depressurisation step (Fig. 5.20b); no holdup supported by the text reproduces it, and the implied gas-capacity factor differs per step (0.55-0.70), so it is not a single holdup parameter. Result: our recovery is 4-5 pp below the author's |
+
+### Simulated vs measured values in Lopes (2010), chapter 5
+
+| quantity | status | source |
+|---|---|---|
+| PSA experiment: purity 99.98054 %, CO 63 ppm, recovery 81.6 %, productivity 101.1 mol/kg/day | **simulated** (author's model of the experiment) | p.256 "(simulated values)"; practice stated on p.241 |
+| PSA experiment: outlet molar flows per species at the GC sample times, cycles 1 and 37 | measured (symbols) | Fig. 5.19, p.193 |
+| PSA experiment: pressure, cycle 1 | measured (symbols); line = author's simulation | Fig. 5.18a, p.192 |
+| PSA experiment: thermocouples (z = 0.059, 0.151, 0.239 m), cycles 1-10, 1 and 37 | measured (symbols); line = author's simulation | Figs 5.18b, 5.19 |
+| PSA experiment: feed flow and composition, step times, pressures | set points | Table 5.4, p.167 |
+| PSA experiment: purge flow, pressurisation flow, EP gas | not reported (purge fitted to the measured cycle-1 purge outflow) | — |
+| 17 simulations (Table 5.10) and Figs 5.20-5.23 | simulated | pp.194-200 |
+
+The values in `data/benchmarks/lopes2010_psa_experiment.csv` are unchanged; `data/benchmarks/README.md` marks them as
+simulated. Earlier step-3 documents called them "experimental" by mistake.
 
 ## Known limitations of the data
 

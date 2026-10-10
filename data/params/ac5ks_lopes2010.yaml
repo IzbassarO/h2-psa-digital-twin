@@ -37,6 +37,11 @@ isotherm:
     CO:  {K_inf: 7.63e-5, minus_dH: 23.23, A0: -0.149e5, A1: 105.46e6,  B0:  -2.407e11, B1:  528.18e11}   # A1 sign corrected, errata E2
     CH4: {K_inf: 2.29e-4, minus_dH: 23.18, A0: 12.808e5, A1: -294.44e6, B0:  -6.101e11, B1: 1745.7e11}
     N2:  {K_inf: 3.06e-4, minus_dH: 18.27, A0: 11.989e5, A1: -278.79e6, B0: -13.758e11, B1: 3988.6e11}
+  # q is the ABSOLUTE amount adsorbed (buoyancy-corrected, eq. 2.2 p.31; p.121; nomenclature p.203), while eps_p is
+  # the total pellet porosity 1 - rho_p/rho_s (rho_s by He pycnometry, p.36). Adsorbed-phase density assumed by the
+  # author for the buoyancy correction (p.31): liquid density at the normal boiling point. Used only in the step-3
+  # gas-holdup diagnostic (pore gas excluding the adsorbed-phase volume); the model of record follows eq. (5.6).
+  adsorbed_phase_density: {units: kg m-3, CO2: 1277.78, CH4: 422.53, N2: 808.60, H2: 78.0, CO: 788.6}
 
 micropore_kinetics_breakthrough:   # Table 4.10 p.128 — fitted on single-gas breakthrough curves
   units: {Dc_over_rc2: s-1, Ea: kJ mol-1}

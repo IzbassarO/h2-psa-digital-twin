@@ -32,6 +32,9 @@ cycle_B_experiment:              # Table 5.4 p.167, Figure 5.7 p.166 (single col
                                  #   ed = gas collected in the matching ED step (ED1->EP1, ED2->EP2, ED3->EP3),
                                  #   consistent with eq. (5.49), which does not charge EP gas to the product;
                                  #   h2 = pure H2 (sensitivity). Inflows enter at the feed temperature.
+                                 #   ed is the PRE-DECLARED BASELINE of the first step-3 comparison. The corrected
+                                 #   model (step-3 decision 2026-10-10) uses ep_gas = h2 with beta_P =
+                                 #   fitted.pressure_decay_rate_author_sims; ed stays in the uncertainty band.
   purge_flow: "NOT reported (pure H2 at z = L); see fitted: below"
 
 performance_definitions: eq. (5.48)-(5.50) p.180   # purity, recovery, productivity
