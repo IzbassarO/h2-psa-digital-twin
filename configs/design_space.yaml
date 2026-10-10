@@ -1,0 +1,36 @@
+# DRAFT (step 4) — design space for the step-6 surrogate / optimisation. Not used by any script yet.
+# Process: single-column layered-bed PSA emulation of the compact LSRE unit (Lopes 2010, ch.5), cycle with
+# Feed, ED1..n, Blow, Purge (H2), EPn..1, Press (H2); frozen step-3 baseline model (see docs/validation/step3.md).
+
+decision_variables:
+  t_feed:          {bounds: [40, 150], units: s,
+                    why: "below ~40 s the 10-s pressure law (beta_P = 0.102 s-1) and the ED/EP steps dominate the cycle; at 125 s the step-4 scan is already at 400-1900 ppm (eq. 3.18) for the experiment's feed flow"}
+  purge_to_feed:   {bounds: [0.02, 0.30], units: "mol H2 purge / mol H2 fed per cycle",
+                    why: "below ~2 % the bed is not regenerated (impurities accumulate); above ~30 % the purge alone costs more recovery than any competitive PSA loses"}
+  P_high:          {bounds: [4.0, 8.5], units: bar,
+                    why: "H2 partial pressure 0.79 P_high stays inside the 0-7 bar isotherm fits (Tables 2.7, 2.8); Table 5.10 spans 5-10 bar"}
+  P_low:           {bounds: [0.3, 1.5], units: bar,
+                    why: "vacuum pump on the blowdown line (Fig. 5.5; experiment 0.5 bar); 0.3 bar assumed pump limit, 1.5 bar = no vacuum"}
+  f_zeolite:       {bounds: [0.0, 1.0], units: "-", grid: "multiples of 1/N (N = 30): the AC | ZEO interface must lie on a cell face",
+                    why: "from AC only to zeolite only; the interior optimum is gate-4 trend c"}
+  n_equalisations: {values: [1, 2, 3], units: "-",
+                    why: "cycles A (1) and B (3) of Lopes; 2 as in Yang (2008)"}
+  feed_flow:       {bounds: [0.5, 1.5], units: "x 5.0e-5 m3/s at 298 K, 1 bar (Table 5.4)",
+                    why: "assumed mass-flow-controller range around the experiment's set point; trend d (velocity)"}
+
+fixed_by_apparatus:
+  column: {L: 0.267 m, d_wi: 0.05 m, wall: "stainless steel, 3 mm (assumed)", source: "Table 5.3"}
+  pressure_law: {beta_P: 0.102 s-1, source: "fitted to the author's simulation (Fig. 5.20a); valve characteristic"}
+  feed: {composition: "0.79 H2 / 0.17 CO2 / 0.021 CH4 / 0.012 CO / 0.007 N2", T: 303 K, source: "Table 5.4"}
+  heater: {T_ambient: 303 K, source: "Fig. 5.6; = feed temperature"}
+  step_times_not_varied: {t_eq: 16 s, t_press: 21 s, t_blow: "201 s (or set by the cycle time)", note: "candidates to free later"}
+
+objectives:
+  - {name: h2_recovery, sense: maximise, definition: "eq. (5.49): (H2 product - H2 in purge and pressurisation) / H2 fed"}
+  - {name: productivity, sense: maximise, definition: "eq. (5.50): net H2 per kg adsorbent per day"}
+
+constraints:
+  - {name: h2_purity, definition: "eq. (5.48), feed components only", limit: ">= 99.99 % (impurities <= 100 ppm)",
+     note: "step 7 replaces the point constraint by a conformal-prediction bound"}
+
+scenarios_carried_to_step7: [ep_inflow_ed_gas, noncompetitive_h2, kinetics_table4.10, thermal_range_ends, dax_correlation]
