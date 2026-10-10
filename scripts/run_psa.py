@@ -44,6 +44,12 @@ TC_COLOUR = {"Bottom": "#6da7ec", "Middle": "#2a78d6", "Top": "#104281"}
 # pre-declared gates (step-3 request; not to be changed after seeing results)
 GATE = dict(css_tol=1e-4, closure=1e-3, grid_rec_pp=0.3, grid_ppm_rel=0.10, rec_pp=3.0, ppm_factor=2.0,
             co_factor=3.0, rho_rec=0.9, rho_ppm=0.8)
+# verification ladder (step-3 follow-up): one hypothesis at a time on the author's simulations
+VARIANTS = {"ep_h2": dict(ep_gas="h2"), "ep_product": dict(ep_gas="product"), "ep_ed_direct": dict(ep_gas="ed_direct"),
+            "ep_ed_reversed": dict(ep_gas="ed_reversed"), "beta_steps": "per_step", "beta_author": "author",
+            "betaA_ep_h2": "author+h2", "betaA_ep_product": "author+product"}
+LADDER_A = (1, 2)
+PROFILE_CYCLES = {1: (1, 5, 10, 20), 13: (1, 5, 6, 10, 11, 16, 20, 21, 51, 101, 161, 221, 296)}   # Fig. 5.23 cycles
 AUTHOR_CHECK = (1, 3, 4, 7, 13)               # Table 5.10 sims rerun with pure-H2 EP inflow (diagnostic)
 # pairwise effects in Table 5.10: (from sim, to sim, what changes)
 PAIRS = [(1, 2, "purge 30->45 s (A, 5 bar)"), (3, 4, "purge 30->45 s (B, 5 bar)"),
@@ -75,8 +81,27 @@ def cases():
         "diag_betaP_low": dict(cycle=dict(beta_P=bl)),
         "diag_betaP_high": dict(cycle=dict(beta_P=bh)),
     }
+    per_step = {k: v for k, v in fit["pressure_decay_rate_per_step"].items() if k in ("ED", "Blow", "EP")}
     for _, row in pd.read_csv(BENCH / "lopes2010_psa_simulations.csv").iterrows():
         out[f"sim{int(row['sim']):02d}"] = dict(sim=row.to_dict(), group=row["transport_group"])
+        if int(row["sim"]) in LADDER_A:
+            for v, cyc in VARIANTS.items():
+                bA = fit["pressure_decay_rate_author_sims"]["value"]
+                cyc = {"per_step": dict(beta_steps=per_step), "author": dict(beta_P=bA),
+                       "author+h2": dict(beta_P=bA, ep_gas="h2"),
+                       "author+product": dict(beta_P=bA, ep_gas="product")}.get(cyc, cyc) if isinstance(cyc, str) else cyc
+                out[f"ver_sim{int(row['sim']):02d}_{v}"] = dict(sim=row.to_dict(), group=row["transport_group"], cycle=cyc)
+        k = int(row["sim"])
+        if k in PROFILE_CYCLES:                  # diagnostics: profiles and step balances (sims 1 and 13)
+            base_spec = dict(sim=row.to_dict(), group=row["transport_group"], profiles=PROFILE_CYCLES[k])
+            out[f"dg_sim{k:02d}"] = base_spec
+            if k == 13:
+                out["dg_sim13_beta_author"] = dict(base_spec, cycle=dict(beta_P=fit["pressure_decay_rate_author_sims"]["value"]))
+                out["dg_sim13_ep_h2"] = dict(base_spec, cycle=dict(ep_gas="h2"))
+                bA = fit["pressure_decay_rate_author_sims"]["value"]
+                out["dg_sim13_betaA_ep_h2"] = dict(base_spec, cycle=dict(beta_P=bA, ep_gas="h2"))
+                out["dg_sim13_betaA_ep_product"] = dict(base_spec, cycle=dict(beta_P=bA, ep_gas="product"))
+                out["dg_sim13_betaA_epsp035"] = dict(base_spec, cycle=dict(beta_P=bA), opts=dict(eps_p=0.35))
         if int(row["sim"]) in AUTHOR_CHECK:     # what EP gas did the author use? (diagnostic vs Table 5.10, not the experiment)
             out[f"diag_sim{int(row['sim']):02d}_ep_gas_h2"] = dict(sim=row.to_dict(), group=row["transport_group"],
                                                                  cycle=dict(ep_gas="h2"))
@@ -89,7 +114,8 @@ def run_case(name, spec):
     m = psa_model(c, N=spec.get("N", N), group=spec.get("group", "1-4"), **spec.get("opts", {}))
     run = CycleRunner(m, c)
     log = lambda s: print(f"[{name}] {s}", flush=True)
-    res = run.run_to_css(record=RECORD if name in ("baseline", "grid_2N") else (37,), log=log)
+    res = run.run_to_css(record=RECORD if name in ("baseline", "grid_2N") else (37,), log=log,
+                         profiles=spec.get("profiles", ()))
     res.update(name=name, spec=spec, species=m.sp, cycle=c, N=m.N, z_tc=run.z_tc)
     with open(CASES_DIR / f"{name}.pkl", "wb") as fh:
         pickle.dump(res, fh)
@@ -280,8 +306,181 @@ def fig_sims(sims, path):
     plt.close(fig)
 
 
+def sim13_author(tag):
+    return pd.read_csv(DIG / f"lopes2010_sim13_{tag}_authorsim.csv", comment="#")
+
+
+def front_z(z, f):
+    """Position of the descending front: last z where the profile is still above half its maximum."""
+    f = np.asarray(f)
+    k = int(np.argmax(f))
+    below = np.flatnonzero(f[k:] < 0.5 * f[k])
+    if not len(below):
+        return np.nan
+    j = k + below[0]
+    return float(np.interp(0.5 * f[k], [f[j], f[j - 1]], [z[j], z[j - 1]]))
+
+
+def sim13_compare(results):
+    """Rung b: our simulation-13 CSS profiles vs Figs 5.20, 5.21, 5.23 (author's model)."""
+    rows = []
+    for name, res in results.items():
+        if not name.startswith("dg_sim13"):
+            continue
+        last = max(res["profiles"])
+        pf = res["profiles"][last]
+        sp = res["species"]
+        for spc in ("CO2", "CH4", "CO", "N2"):
+            a = sim13_author(f"q{spc}")
+            for step in ("Feed", "Purge"):
+                g = a[a.series == step]
+                q = pf[step]["q"][sp.index(spc)]
+                rows.append(dict(case=name, quantity=f"q {spc} front z, end of {step} [m]",
+                                 author=front_z(g.z_m.values, g.value.values), model=front_z(pf[step]["z"], q)))
+                rows.append(dict(case=name, quantity=f"q {spc} max, end of {step} [mol/kg]", author=g.value.max(), model=q.max()))
+        a = sim13_author("CN2_feedend")
+        g = a[a.series == "cycle 296"]
+        C = pf["Feed"]["C"][sp.index("N2")]
+        rows.append(dict(case=name, quantity="C N2 front z, end of feed [m]", author=front_z(g.z_m.values, g.value.values),
+                         model=front_z(pf["Feed"]["z"], C)))
+        rows.append(dict(case=name, quantity="C N2 at z = 0.25 m, end of feed [mol/m3]",
+                         author=float(np.interp(0.25, g.z_m, g.value)), model=float(np.interp(0.25, pf["Feed"]["z"], C))))
+        rows.append(dict(case=name, quantity="impurities [ppm]", author=20.1, model=res["perf"]["ppm"]))
+        rows.append(dict(case=name, quantity="recovery [%]", author=72.88, model=res["perf"]["recovery_pct"]))
+    return pd.DataFrame(rows)
+
+
+def fig_sim13(res, path):
+    last = max(res["profiles"])
+    pf, tr, sp = res["profiles"][last], res["traces"][last], res["species"]
+    fig, axs = plt.subplots(3, 4, figsize=(16, 10.5))
+    # Fig. 5.20: pressure and outlet flows
+    P_open = np.where(np.isin(tr["step"], ["Blow", "Purge"]), tr["P0"], tr["PL"]) / 1e5
+    a = sim13_author("pressure")
+    axs[0, 0].plot(a.time_s, a.value, "o", ms=2, color="0.5", label="author (Fig. 5.20a)")
+    axs[0, 0].plot(tr["t"], P_open, color="#2a78d6", label="model")
+    axs[0, 0].set(title="pressure at the open end [bar]", xlabel="cycle time [s]")
+    axs[0, 0].legend(frameon=False, fontsize=7)
+    mod = outlet(tr, sp)
+    a = sim13_author("H2flow")
+    axs[0, 1].plot(a.time_s, a.value, "o", ms=2, color="0.5")
+    axs[0, 1].plot(tr["t"], mod["H2"], color=COLOUR["H2"])
+    axs[0, 1].set(title="H2 outlet flow [mmol/s]", xlabel="cycle time [s]")
+    a = sim13_author("flows")
+    for spc in ("CO2", "CH4", "CO", "N2"):
+        g = a[(a.series == f"{spc}_mmol_s") & (a.time_s > 150)]
+        ax = axs[0, 2] if spc == "CO2" else axs[0, 3]
+        ax.plot(g.time_s, g.value, "o", ms=2, color=COLOUR[spc], alpha=0.5)
+        ax.plot(tr["t"], mod[spc], color=COLOUR[spc], label=spc)
+    axs[0, 2].set(title="CO2 outlet flow [mmol/s]", xlabel="cycle time [s]", xlim=(140, 310))
+    axs[0, 3].set(title="CH4, CO, N2 outlet flow [mmol/s]", xlabel="cycle time [s]", xlim=(140, 310), ylim=(0, 0.3))
+    axs[0, 3].legend(frameon=False, fontsize=7)
+    # Fig. 5.21: loadings at the end of feed and purge
+    for j, spc in enumerate(("CO2", "CH4", "CO", "N2")):
+        ax = axs[1, j]
+        a = sim13_author(f"q{spc}")
+        for step, cl in (("Feed", "#d23f3f"), ("Blow", "#7a7a7a"), ("Purge", "#2a78d6"), ("Press", "#1baf7a")):
+            g = a[a.series == step]
+            ax.plot(g.z_m, g.value, "o", ms=2, color=cl, alpha=0.5)
+            ax.plot(pf[step]["z"], pf[step]["q"][sp.index(spc)], color=cl, label=f"end of {step}")
+        ax.set(title=f"q {spc} [mol/kg] (Fig. 5.21)", xlabel="z [m]")
+    axs[1, 0].legend(frameon=False, fontsize=7, title="symbols author, lines model", title_fontsize=7)
+    # Fig. 5.23: end of feed over the cycles
+    cyc = [k for k in (1, 6, 11, 21, 51, 101) if k in res["profiles"]] + [last]
+    aT, aN = sim13_author("Tg_feedend"), sim13_author("CN2_feedend")
+    cmap = plt.get_cmap("viridis")
+    for i, k in enumerate(cyc):
+        cl = cmap(i / max(len(cyc) - 1, 1))
+        lab = f"cycle {k}" if k != last else f"CSS (cycle {k})"
+        auth = f"cycle {k}" if k != last else "cycle 296"
+        for ax, a, key, idx in ((axs[2, 0], aT, "Tg", None), (axs[2, 1], aN, "C", sp.index("N2"))):
+            g = a[a.series == auth]
+            ax.plot(g.z_m, g.value, "o", ms=2, color=cl, alpha=0.5)
+            v = res["profiles"][k]["Feed"][key]
+            ax.plot(res["profiles"][k]["Feed"]["z"], v if idx is None else v[idx], color=cl, label=lab)
+    axs[2, 0].set(title="Tg at the end of feed [K] (Fig. 5.23a)", xlabel="z [m]")
+    axs[2, 1].set(title="C N2 at the end of feed [mol/m3] (Fig. 5.23b)", xlabel="z [m]")
+    axs[2, 1].legend(frameon=False, fontsize=7)
+    a = sim13_author("qH2")
+    for step, cl in (("Feed", "#d23f3f"), ("Blow", "#7a7a7a"), ("Press", "#1baf7a")):
+        g = a[a.series == step]
+        axs[2, 2].plot(g.z_m, g.value, "o", ms=2, color=cl, alpha=0.5)
+        axs[2, 2].plot(pf[step]["z"], pf[step]["q"][sp.index("H2")], color=cl, label=f"end of {step}")
+    axs[2, 2].set(title="q H2 [mol/kg] (Fig. 5.21a)", xlabel="z [m]")
+    h = pd.DataFrame(res["history"])
+    axs[2, 3].plot(h.cycle, h.ppm, color="0.2")
+    axs[2, 3].axhline(20.1, color="#d23f3f", ls="--", lw=1)
+    axs[2, 3].set(yscale="log", title="impurities [ppm] vs cycle (author: 20.1 at CSS)", xlabel="cycle")
+    fig.suptitle(f"simulation 13 at CSS: {res['name']}", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+
+
+def h2_release(res):
+    """H2 leaving the bed per step [mmol]: author (Fig. 5.20b, integrated) vs model."""
+    a = sim13_author("H2flow").sort_values("time_s")
+    tr = res["traces"][max(res["traces"])]
+    mod = outlet(tr, res["species"])["H2"]
+    edges = np.cumsum([0] + [d for _, d, _ in res["cycle"].steps])
+    rows = []
+    for i, (n, _, _) in enumerate(res["cycle"].steps):
+        if n not in ("Feed", "ED1", "ED2", "ED3", "Blow"):
+            continue
+        tt = np.linspace(edges[i], edges[i + 1], 500)
+        sel = (tr["t"] >= edges[i]) & (tr["t"] <= edges[i + 1])
+        A = np.trapezoid(np.interp(tt, a.time_s, a.value), tt)
+        M = np.trapezoid(mod[sel], tr["t"][sel])
+        rows.append(dict(step=n, author_mmol=A, model_mmol=M, ratio=M / A))
+    return pd.DataFrame(rows)
+
+
+def step_balance(res):
+    """Per-step, per-component moles [mmol] over the last (CSS) cycle: + enters the bed, - leaves it."""
+    sp = res["species"]
+    rows = []
+    for st, mo in res["step_moles"].items():
+        net = mo[0] - mo[1]                       # in at z = 0 minus out at z = L
+        rows.append(dict(step=st, **{s: 1e3 * net[i] for i, s in enumerate(sp) if s != "He"}))
+    return pd.DataFrame(rows)
+
+
+def fig_profile_evolution(res, path, species=("N2", "CO")):
+    """Gas-phase impurity profiles at the end of every step for the cycles kept (diagnostic)."""
+    sp, prof = res["species"], res["profiles"]
+    cycles = sorted(prof)
+    steps = [n for n, _, _ in res["cycle"].steps]
+    fig, axs = plt.subplots(len(species), len(steps), figsize=(2.2 * len(steps), 3.0 * len(species)), sharex=True,
+                            sharey="row", squeeze=False)
+    cmap = plt.get_cmap("viridis")
+    for i, spc in enumerate(species):
+        for j, st in enumerate(steps):
+            ax = axs[i, j]
+            for k, c in enumerate(cycles):
+                p = prof[c][st]
+                ax.plot(p["z"], p["C"][sp.index(spc)], color=cmap(k / max(len(cycles) - 1, 1)),
+                        label=f"cycle {c}" if c != cycles[-1] else f"CSS ({c})")
+            ax.set_yscale("symlog", linthresh=1e-3)
+            if i == 0:
+                ax.set_title(f"end of {st}", fontsize=9)
+            if j == 0:
+                ax.set_ylabel(f"C {spc} [mol/m3]")
+            if i == len(species) - 1:
+                ax.set_xlabel("z [m]")
+    axs[0, 0].legend(fontsize=6, frameon=False)
+    fig.suptitle(f"{res['name']}: gas-phase impurity profiles (z = L is the product end)", fontsize=10)
+    fig.tight_layout()
+    fig.savefig(path, dpi=100)
+    plt.close(fig)
+
+
 # ---------------------------------------------------------------------------- report
-FINDINGS = """## Findings (written after the results; the numbers are in the tables below)
+FINDINGS = """## First experiment comparison: findings at the time (baseline fixed beforehand)
+
+**First experiment comparison = FAIL (1825 ppm impurities, 675 ppm CO, 81.86 % recovery) with the baseline fixed
+before any comparison.** Any later experiment result is "after corrections found by reproducing the author's model"
+and is reported as such. (Since then: the experiment's purity, CO and recovery turn out to be the author's
+simulated values, p.256; see the follow-up section.)
 
 1. **Numerics are sound (gate 1 PASS).** CSS after 178 cycles from the He-filled column (thesis: 240), cycle
    mole balance within 4e-6 in every case, N = 30 -> 60 changes recovery by 0.02 pp and impurities by 1.2 %.
@@ -445,6 +644,34 @@ def analyse():
                            co_author=s.co_author, co_ep_ed=s.co_model, co_ep_h2=p["co_ppm"]))
     t["author_check"] = pd.DataFrame(ac)
 
+    # ---- verification ladder (follow-up): rung a, rung b, diagnostics
+    sim = pd.read_csv(BENCH / "lopes2010_psa_simulations.csv").set_index("sim")
+    lad = []
+    label = {"": "baseline (ED gas mixed, beta_P 0.20)", "ep_h2": "(i) EP = pure H2", "ep_product": "(i) EP = product gas",
+             "ep_ed_direct": "(i) EP = ED gas, first out first in", "ep_ed_reversed": "(i) EP = ED gas, last out first in",
+             "beta_steps": "(ii) beta_P per step type (Fig. 5.18a)", "beta_author": "beta_P of the author (0.102, Fig. 5.20a)",
+             "betaA_ep_h2": "author beta_P + EP = pure H2", "betaA_ep_product": "author beta_P + EP = product gas"}
+    for k in (1, 2, 13):
+        for v, lab in label.items():
+            n = (f"sim{k:02d}" if not v else f"ver_sim{k:02d}_{v}") if k != 13 else \
+                {"": "dg_sim13", "ep_h2": "dg_sim13_ep_h2", "beta_author": "dg_sim13_beta_author",
+                 "betaA_ep_h2": "dg_sim13_betaA_ep_h2", "betaA_ep_product": "dg_sim13_betaA_ep_product"}.get(v)
+            if n not in results:
+                continue
+            p, a = results[n]["perf"], sim.loc[k]
+            pa = 1e6 * (1 - a.h2_purity_pct / 100)
+            lad.append(dict(sim=k, case=lab, ppm=p["ppm"], ppm_author=pa, ppm_ratio=p["ppm"] / pa, co_ppm=p["co_ppm"],
+                            co_author=a.co_ppm, recovery=p["recovery_pct"], d_recovery_pp=p["recovery_pct"] - a.h2_recovery_pct,
+                            prod=p["productivity"], prod_author=a.productivity_mol_kg_day,
+                            target=ok(1 / 2 <= p["ppm"] / pa <= 2 and abs(p["recovery_pct"] - a.h2_recovery_pct) <= 2)))
+    t["ladder"] = pd.DataFrame(lad)
+    s13 = {n: r for n, r in results.items() if n.startswith("dg_sim13")}
+    t["sim13_profiles"] = sim13_compare(s13) if s13 else pd.DataFrame()
+    t["balance_sim01"] = step_balance(results["dg_sim01"]) if "dg_sim01" in results else pd.DataFrame()
+    if "dg_sim13_betaA_ep_h2" in results:
+        t["balance_sim13"] = step_balance(results["dg_sim13_betaA_ep_h2"])
+        t["h2_release_sim13"] = h2_release(results["dg_sim13_betaA_ep_h2"])
+
     # ---- runtime
     t["runtime"] = pd.DataFrame([dict(case=n, N=r["N"], cycles=r["cycles"], wall_min=r["runtime_s"] / 60, cpu_min=r["cpu_s"] / 60,
                                       cpu_s_per_cycle=r["cpu_s"] / (r["cycles"] + 1)) for n, r in results.items()])
@@ -464,8 +691,10 @@ def main():
     if todo and not a.report_only:
         order = sorted(todo, key=lambda n: (n != "grid_2N", n))          # longest first
         with ProcessPoolExecutor(a.workers) as ex:
-            for f in as_completed([ex.submit(run_case, n, todo[n]) for n in order]):
-                f.result()
+            futs = {ex.submit(run_case, n, todo[n]): n for n in order}
+            for f in as_completed(futs):
+                if f.exception() is not None:
+                    print(f"[{futs[f]}] FAILED: {f.exception()!r}", flush=True)
     results, t = analyse()
     for k, v in t.items():
         v.to_csv(OUT / f"{k}.csv", index=False)
@@ -474,6 +703,11 @@ def main():
     fig_flows(base, OUT / "flows.png")
     fig_temperature(base, OUT / "temperature.png")
     fig_css(results, OUT / "css.png")
+    for n in ("dg_sim13", "dg_sim13_betaA_ep_h2"):
+        if n in results:
+            fig_sim13(results[n], OUT / f"{n}.png")
+    if "dg_sim01" in results:
+        fig_profile_evolution(results["dg_sim01"], OUT / "profiles_sim01.png")
     if len(t["sims"]):
         fig_sims(t["sims"], OUT / "sims.png")
     write_report(results, t)
@@ -489,6 +723,144 @@ def main():
 
 def verdict(df):
     return "PASS" if len(df) and (df.result == "PASS").all() else "FAIL"
+
+
+def followup(t):
+    """Step-3 follow-up: reproduce the author's model (verification) before touching the experiment again."""
+    lad = t["ladder"]
+    f_l = {"ppm": "{:.1f}", "ppm_author": "{:.1f}", "ppm_ratio": "{:.2f}", "co_ppm": "{:.2f}", "co_author": "{:.3g}",
+           "recovery": "{:.2f}", "d_recovery_pp": "{:+.2f}", "prod": "{:.1f}", "prod_author": "{:.1f}"}
+    sp = t["sim13_profiles"]
+    sp = sp[sp.case.isin(["dg_sim13", "dg_sim13_beta_author", "dg_sim13_betaA_ep_h2"])] if len(sp) else sp
+    return f"""## Follow-up: reproducing the author's model (verification, project lead's decision (b))
+
+**Principle.** The author's 17 simulations (Table 5.10, Figs 5.20-5.23) are a verification target for the
+implementation; inferring from them what the author did is legitimate. The PSA experiment is not used to choose
+anything. Rung c and the experiment rerun were **not** done: rung a does not meet its targets (below).
+
+### 1. What the thesis says (quoted)
+
+* p.166: "A PSA cycle of 10 elementary steps was employed (see Figure 5.7): a co-current feed, three pressure
+  equalizations-depressurizations, a counter-current blowdown, a counter-current purge with hydrogen, three pressure
+  equalizations-pressurizations and a counter-current pressurization with hydrogen."
+* p.191: "In this single-column experiment, the pressure equalization was divided into three different steps to
+  simulate the behaviour of an industrial PSA unit where several pressure equalization steps are required to
+  increase H2 recovery."
+* pp.178-180, eqs 5.44-5.45 (EP) and 5.46-5.47 (Press): the inlet condition is
+  u0,inlet C_inlet,i = u0 C_g,i - eps Dax C_g,T dy_i/dz with u0,inlet C_inlet,T = u0 C_g,T; **C_inlet is not defined
+  for EP**, and no pressure law is given for EP. Press: P = P_inter + (P_high - P_inter) t/t_press (eq. 5.47).
+* p.180: "The simulations of the depressurization steps were performed using an exponential decay function until a
+  pre-defined pressure (Pinter) is achieved (see equation (5.39)). When three successive pressure equalizations take
+  place, three different pressure intervals are defined using exponential functions with the same exponential decay
+  rate constant (betaP)."
+* Fig. 5.5 (p.164): two columns, one tank, mass-flow controllers on the feed lines, a mass-flow meter and a
+  back-pressure regulator on the product line, a vacuum pump. The text never says what the tank or column 2 did in
+  the single-column experiment.
+* pp.221-223 (chapter 6, same unit): equalisation between columns 1 and 2 reached "2.68, 2.28 and 1.85 bar instead
+  of 3, 2.5 and 2 bar" because of dead volumes; "Since the dead volumes may result in significant changes to the
+  experimental results, in this chapter, only experiments involving the fast cycling of a single-column PSA are
+  reported."
+* **p.256: "it was concluded that a hydrogen recovery of 81.6% was obtained in the PSA experiment with a H2 purity of
+  99.98054% contaminated with 63 ppm of CO (simulated values) and a process productivity of 101.1 molH2 kgads-1
+  day-1."** Chapter 6 states the practice (p.241): "Due to the small number of experimental points, report
+  experimental values of these performance parameters may not be very accurate. Since the simulation predicts with
+  good accuracy the experimental results obtained, the performance parameters based on simulated results were
+  reported." **The experiment's purity, CO and recovery used in gate 2 are therefore the author's simulation of the
+  experiment, not measurements.** The measured data of the experiment are the outlet flows at the GC sampling times
+  (Fig. 5.19), the pressure (Fig. 5.18a) and the temperatures (Figs 5.18b, 5.19). Decision needed (below).
+
+### 2. Rung a (cycle A, simulations 1 and 2) and simulation 13 — one hypothesis at a time
+
+Target: impurity within a factor of 2 and recovery within 2 pp of Table 5.10.
+
+{md(lad, f_l)}
+
+* **(i) EP inflow.** Pure H2 lowers impurity 2.5-5x; product gas slightly less; ED gas (mixed, first-out-first-in or
+  last-out-first-in) gives the highest impurity. Recovery does not depend on the EP gas (eq. 5.49 does not count it).
+* **(ii) beta_P per step type**, fitted only to Fig. 5.18a: ED 7.33, Blow 0.078, EP 0.087 s-1 (objective 0.048 vs
+  1.20 bar2 for one constant; RMS per step 0.03-0.16 bar, `fit_bcs_beta.csv`). It describes the experiment's valves
+  much better but moves the model away from the author (impurity 15-110x).
+* **The author's own beta_P.** Fitted to his simulated sim-13 pressure (Fig. 5.20a, digitised): **0.102 s-1**, each
+  exponential step alone 0.09-0.11 s-1 (EP included). With it our sim-13 pressure, loading profiles and N2 front
+  coincide with his (table below).
+* **(iii) Purge flow.** Not the cause. If the extra purge time costs only its H2 (eq. 5.49), the author's recovery
+  changes imply 0.24 (sims 1->2), 0.26 (3->4), 0.23 (9->10) and 0.23 mmol/s (16->17), the same as our 0.261 mmol/s
+  fitted to Fig. 5.19.
+* Not adopted, diagnostic only: pellet porosity 0.35 instead of 0.627 (Table 4.5) with the author's beta_P on sim 13:
+  recovery +5.8 pp but impurity 30x worse — lower gas holdup alone does not explain both gaps.
+
+### 3. Simulation 13 against Figs 5.20-5.23 (rung b, as a diagnostic)
+
+{md(sp, {"author": "{:.4g}", "model": "{:.4g}"}) if len(sp) else ""}
+
+![sim 13, author beta_P + EP = H2](dg_sim13_betaA_ep_h2.png)
+![sim 13, baseline](dg_sim13.png)
+
+H2 leaving the bed per step, sim 13 (author's beta_P, EP = H2), author's line in Fig. 5.20b integrated:
+
+{md(t["h2_release_sim13"], {"author_mmol": "{:.1f}", "model_mmol": "{:.1f}", "ratio": "{:.2f}"}) if "h2_release_sim13" in t else ""}
+
+At the end of every step our pressure (open end and interior) and H2 loadings coincide with the author's within
+1 % (Fig. 5.21a), yet our column releases 26-43 % more H2 in each ED step and 25 % more in the blowdown, and needs
+about 20 % more H2 to pressurise (from eq. 5.49 with his recovery and productivity). Equations 5.3 and 5.6 include
+the macropore gas exactly as we do, so the thesis does not explain the difference. The extra blowdown loss
+(about 12 mmol per cycle) is the 4 pp recovery deficit.
+
+### 4. Localising the excess impurity (diagnostics, sim 1 baseline)
+
+Per-step, per-component moles over the CSS cycle [mmol; + enters, - leaves the bed]:
+
+{md(t["balance_sim01"], {"H2": "{:.3f}", "CO2": "{:.4f}", "CH4": "{:.4f}", "CO": "{:.4f}", "N2": "{:.4f}"}) if len(t["balance_sim01"]) else ""}
+
+Blowdown removes 77 % and the purge 21 % of the N2 fed; 3.4 % leaves with the product (0.049 mmol/cycle). The EP
+step returns 0.050 mmol N2 per cycle into the product end with the ED gas — as much as leaves in the product. The
+profiles show the mechanism: the purge cleans only the last few cm of the product end, EP re-contaminates them, and
+after ~10 cycles the impurity tail spans the bed:
+
+![impurity profiles, sim 1](profiles_sim01.png)
+
+Purity calculation checked against eq. 5.48: feed step only, z = L, He excluded (He was in the denominator before;
+its effect at CSS is below 0.3 ppm). Tests cover eqs 5.48-5.50 against the step integrals.
+
+### 5. Changes adopted, and why (A = supported by the thesis, B = needed to reproduce the author's simulations
+without using the experiment)
+
+| change | basis | used for |
+|---|---|---|
+| purity excludes He (eq. 5.48 sums the feed components) | A | all runs |
+| beta_P = 0.102 s-1, one constant for ED, Blow and EP | B (Fig. 5.20a) + A (p.180: same constant) | the author's simulations |
+| EP inflow = pure H2 | B (sims 1, 2, 13; Figs 5.21, 5.23b) — C_inlet is not given (eq. 5.45) | the author's simulations |
+
+Not adopted: ED gas variants, product gas, per-step beta_P (worse against the author), pellet porosity (contradicts
+Table 4.5). The experiment case keeps the pre-declared baseline; nothing has been re-run against it.
+
+### 6. Remaining gap and options
+
+With both corrections: impurity 1.2x (sim 1), 2.4x (sim 2), 1.2x (sim 13) the author's; CO 2.7-8.7x;
+**recovery 4.0-4.6 pp below the author in all three** (target 2 pp). Rung a fails on recovery (and narrowly on
+sim-2 impurity), so I stopped here.
+
+Most likely causes of the recovery gap, ranked:
+1. **Gas released or taken up per step at a given pressure change is 15-40 % larger in our model** (ED, blowdown,
+   pressurisation) although pressures and loadings coincide. Something in the author's implementation holds less
+   gas than eqs 5.3/5.6 with eps = 0.404 and eps_p = 0.627 imply (a different voidage or porosity in the code, or
+   macropore gas not exchanging with the bulk on the step time scale). Not resolvable from the thesis text.
+2. Feed flow basis: his productivity/recovery ratios imply 0.6-1.3 % more feed H2 per cycle (1 atm instead of
+   1 bar?); worth < 0.5 pp.
+3. Purge flow: excluded (above).
+
+Options for the project lead:
+* **(a) Accept a systematic recovery offset of about -4 pp against the author** (impurity reproduced within ~2x
+  with the two B corrections), run rung c (17 simulations: ranks, signs, absolute differences) and then, if it
+  passes, the single post-correction experiment comparison.
+* **(b) Pursue cause 1** with targeted implementation variants (e.g. macropore gas lumped differently, voidage
+  definitions) judged only on the sim-13 step releases (Fig. 5.20b) and Table 5.10 — risks becoming reverse
+  engineering of an undocumented code.
+* **(c) Contact the author / LSRE** for the gPROMS input (EP C_inlet, porosities, beta_P) — the cleanest fix.
+* **Decide how to treat the experiment's purity/CO/recovery** now that they are known to be simulated values
+  (p.256): as an 18th author simulation (verification), with validation restricted to the measured outlet flows,
+  pressure and temperatures; or keep gate 2 as defined.
+"""
 
 
 def write_report(results, t):
@@ -508,11 +880,18 @@ Generated by `scripts/run_psa.py` (cases cached in `results/step3/cases/`). Thes
 
 ## Verdict
 
+Status after the follow-up: verification against the author's model is **incomplete** — impurity is reproduced
+within ~2x with two corrections inferred from the author's figures, recovery stays 4.0-4.6 pp low (target 2 pp).
+Rung c and the post-correction experiment comparison were not run. The gates below are those of the **first**
+comparison (pre-declared baseline).
+
 | gate | result |
 |---|---|
 | 1. Numerical (CSS, mole balance, grid) | {verdict(t["gate1"])} |
 | 2. Experiment (recovery, impurity ppm, CO ppm at CSS) | {"PASS" if gate2_pass else "FAIL"} |
 | 3. Author's 17 simulations (rank correlation, effect signs) | {verdict(t["gate3"])} |
+
+{followup(t) if len(t.get("ladder", ())) else ""}
 
 {FINDINGS}
 
