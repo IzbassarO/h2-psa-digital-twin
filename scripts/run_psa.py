@@ -44,12 +44,19 @@ TC_COLOUR = {"Bottom": "#6da7ec", "Middle": "#2a78d6", "Top": "#104281"}
 # pre-declared gates (step-3 request; not to be changed after seeing results)
 GATE = dict(css_tol=1e-4, closure=1e-3, grid_rec_pp=0.3, grid_ppm_rel=0.10, rec_pp=3.0, ppm_factor=2.0,
             co_factor=3.0, rho_rec=0.9, rho_ppm=0.8)
+# measured cyclic data (step-3 decision 2026-10-10, declared before running): H2 per step and CO2 front +-10 %,
+# H2 recovery at cycle 37 +-3 pp, thermocouple peak rise +-30 % and peak time +-20 % (step-2 criteria)
+GATE_MEAS = dict(h2_rel=0.10, co2_rel=0.10, rec_pp=3.0, rise_rel=0.30, tpeak_rel=0.20)
 # verification ladder (step-3 follow-up): one hypothesis at a time on the author's simulations
 VARIANTS = {"ep_h2": dict(ep_gas="h2"), "ep_product": dict(ep_gas="product"), "ep_ed_direct": dict(ep_gas="ed_direct"),
             "ep_ed_reversed": dict(ep_gas="ed_reversed"), "beta_steps": "per_step", "beta_author": "author",
             "betaA_ep_h2": "author+h2", "betaA_ep_product": "author+product"}
 LADDER_A = (1, 2)
 PROFILE_CYCLES = {1: (1, 5, 10, 20), 13: (1, 5, 6, 10, 11, 16, 20, 21, 51, 101, 161, 221, 296)}   # Fig. 5.23 cycles
+# corrected model (step-3 decision): author's beta_P (Fig. 5.20a) and pure-H2 EP inflow; sims 1, 2, 13 already ran
+COR = dict(beta_P=load_yaml(ROOT / "data" / "params" / "compact_column_lopes2010.yaml")["fitted"]
+           ["pressure_decay_rate_author_sims"]["value"], ep_gas="h2")
+COR_ALIAS = {1: "ver_sim01_betaA_ep_h2", 2: "ver_sim02_betaA_ep_h2", 13: "dg_sim13_betaA_ep_h2"}
 AUTHOR_CHECK = (1, 3, 4, 7, 13)               # Table 5.10 sims rerun with pure-H2 EP inflow (diagnostic)
 # pairwise effects in Table 5.10: (from sim, to sim, what changes)
 PAIRS = [(1, 2, "purge 30->45 s (A, 5 bar)"), (3, 4, "purge 30->45 s (B, 5 bar)"),
@@ -105,7 +112,21 @@ def cases():
         if int(row["sim"]) in AUTHOR_CHECK:     # what EP gas did the author use? (diagnostic vs Table 5.10, not the experiment)
             out[f"diag_sim{int(row['sim']):02d}_ep_gas_h2"] = dict(sim=row.to_dict(), group=row["transport_group"],
                                                                  cycle=dict(ep_gas="h2"))
+        if k not in COR_ALIAS:                    # rung c: corrected model on every Table 5.10 simulation
+            out[f"cor_sim{k:02d}"] = dict(sim=row.to_dict(), group=row["transport_group"], cycle=COR)
+    # corrected model on the experiment cycle: the author's 18th simulation (p.256) and the measured cyclic data
+    out["cor_exp"] = dict(cycle=COR, record=RECORD)
+    out["cor_exp_grid_2N"] = dict(cycle=COR, N=2 * N)
+    out["cor_exp_ep_ed"] = dict(cycle=dict(COR, ep_gas="ed"), record=RECORD)
+    for n, o in (("noncompetitive_h2", out["band_noncompetitive_h2"]), ("kinetics_table4.10", out["band_kinetics_table4.10"]),
+                 ("thermal_low", out["band_thermal_low"]), ("thermal_high", out["band_thermal_high"])):
+        out[f"cor_exp_{n}"] = dict(o, cycle=COR, record=RECORD)
     return out
+
+
+def cor_case(k):
+    """Case holding simulation k with the corrected model (reuses the identical ladder/diagnostic runs)."""
+    return COR_ALIAS.get(k, f"cor_sim{k:02d}")
 
 
 def run_case(name, spec):
@@ -114,7 +135,7 @@ def run_case(name, spec):
     m = psa_model(c, N=spec.get("N", N), group=spec.get("group", "1-4"), **spec.get("opts", {}))
     run = CycleRunner(m, c)
     log = lambda s: print(f"[{name}] {s}", flush=True)
-    res = run.run_to_css(record=RECORD if name in ("baseline", "grid_2N") else (37,), log=log,
+    res = run.run_to_css(record=spec.get("record", RECORD if name in ("baseline", "grid_2N") else (37,)), log=log,
                          profiles=spec.get("profiles", ()))
     res.update(name=name, spec=spec, species=m.sp, cycle=c, N=m.N, z_tc=run.z_tc)
     with open(CASES_DIR / f"{name}.pkl", "wb") as fh:
@@ -435,6 +456,260 @@ def h2_release(res):
     return pd.DataFrame(rows)
 
 
+def holdup(res):
+    """Gas-holdup diagnostic (decision item 2): H2 released per step [mmol] split into interparticle gas,
+    macropore gas and adsorbed phase, from one extra cycle at CSS; plus the release with the pore gas excluding the
+    adsorbed-phase volume (q absolute, eps_p total porosity; p.31), evaluated on the same states (a posteriori)."""
+    c = res["cycle"]
+    m = psa_model(c, N=res["N"], group=res["spec"].get("group", "1-4"), **res["spec"].get("opts", {}))
+    run = CycleRunner(m, c)
+    run.ref = (lambda t: c.P_high, c.t_press)                  # state at the end of Press (linear law, ends at P_high)
+    cr = run.run_cycle(res["y_end"].copy(), profiles=True)
+    iso = load_yaml(PARAMS / "ac5ks_lopes2010.yaml")["isotherm"]["adsorbed_phase_density"]
+    M = load_yaml(PARAMS / "gas_properties_nist.yaml")["species"]
+    vads = np.array([M[s]["M"] / iso[s] if s in iso else 0.0 for s in m.sp])      # m3 per mol adsorbed
+    iH, V, e = m.sp.index("H2"), m.A * m.dz, m.eps
+
+    def phases(p):
+        ep_free = m.eps_p - m.rho_p * (vads[:, None] * p["q"]).sum(0)
+        return np.array([1e3 * (V * e * p["C"][iH]).sum(), 1e3 * (V * (1 - e) * m.eps_p * p["Cm"][iH]).sum(),
+                         1e3 * (V * (1 - e) * m.rho_p * p["q"][iH]).sum(), 1e3 * (V * (1 - e) * ep_free * p["Cm"][iH]).sum(),
+                         (m.eps_p[0] - ep_free.min()) / m.eps_p[0]])
+    steps = [n for n, _, _ in c.steps]
+    prev = phases(cr.profiles[steps[-1]])
+    auth = h2_release(res).set_index("step").author_mmol if res["name"].startswith("dg_sim13") else {}
+    rows = []
+    for n in ("Feed", "ED1", "ED2", "ED3", "Blow"):
+        h = phases(cr.profiles[n])
+        d = prev - h if n != "Feed" else None
+        prev = h
+        if d is None:
+            continue
+        a = auth.get(n, np.nan)
+        rows.append(dict(step=n, interparticle=d[0], macropore=d[1], adsorbed=d[2], total=d[:3].sum(),
+                         author=a, ratio=d[:3].sum() / a, total_excl_ads_volume=d[0] + d[3] + d[2],
+                         author_gas_scale=(a - d[2]) / (d[0] + d[1]), max_pore_fraction_filled=h[4]))
+    cap = dict(eps=float(e[0]), eps_p=float(m.eps_p[0]), gas_capacity=float(e[0] + (1 - e[0]) * m.eps_p[0]),
+               rho_b=float((1 - e[0]) * m.rho_p[0]))
+    return pd.DataFrame(rows), cap
+
+
+def step_type(name):
+    return name.rstrip("123")
+
+
+def pressure_by_type(res):
+    """Gate 3a: RMS of the open-end pressure vs Fig. 5.18a (measured, cycle 1) per step type [bar]."""
+    pe = pd.DataFrame(pressure_errors(res))
+    pe["type"] = pe.step.map(step_type)
+    return pe.groupby("type", sort=False).apply(
+        lambda g: pd.Series(dict(n=int(g.n.sum()), rms_bar=np.sqrt((g.n * g.rms_bar ** 2).sum() / g.n.sum()))),
+        include_groups=False).reset_index()
+
+
+def step_windows(res):
+    edges = np.cumsum([0] + [d for _, d, _ in res["cycle"].steps])
+    return [(n, edges[i], edges[i + 1]) for i, (n, _, _) in enumerate(res["cycle"].steps)]
+
+
+def h2_step_integrals(res, cyc, tol=GATE_MEAS["h2_rel"]):
+    """Gate 3b: H2 leaving the bed per step [mmol], measured (GC samples, Fig. 5.19) vs model, over the window
+    spanned by the samples of that step; both integrated by the trapezoid rule on the sample times (the model also
+    exactly). Steps with fewer than 2 samples are not evaluable."""
+    tr = res["traces"][cyc]
+    mod = outlet(tr, res["species"])["H2"]
+    e = read(f"psa_c{cyc}_flow")
+    e = e[e.series == "H2"].sort_values("time_s")
+    rows = []
+    for n, a, b in step_windows(res):
+        g = e[(e.time_s >= a) & (e.time_s <= b)]
+        if len(g) < 2:
+            rows.append(dict(cycle=cyc, step=n, n=len(g), window="–", measured_mmol=np.nan, model_mmol=np.nan,
+                             model_exact_mmol=np.nan, rel_err=np.nan, result="not evaluable"))
+            continue
+        t = g.time_s.values
+        ms = np.interp(t, tr["t"], mod)
+        sel = (tr["t"] >= t[0]) & (tr["t"] <= t[-1]) & (tr["step"] == n)
+        E, Ms = np.trapezoid(g.molar_flow_mmol_s.values, t), np.trapezoid(ms, t)
+        rows.append(dict(cycle=cyc, step=n, n=len(g), window=f"{t[0]:.0f}-{t[-1]:.0f} s", measured_mmol=E, model_mmol=Ms,
+                         model_exact_mmol=np.trapezoid(mod[sel], tr["t"][sel]), rel_err=Ms / E - 1,
+                         result=ok(abs(Ms / E - 1) <= tol)))
+    return rows
+
+
+def co2_feed_front(res, cyc):
+    """Gate 3b: CO2 front at z = L in the feed step. The front time is the first sample above 10 % of the CO2 feed
+    flow; returns measured and model maxima if no front appears."""
+    tr = res["traces"][cyc]
+    c = res["cycle"]
+    thr = 0.1 * 1e3 * c.feed_flow * c.y_feed["CO2"]
+    e = read(f"psa_c{cyc}_flow")
+    g = e[(e.series == "CO2") & (e.time_s <= c.t_feed)]
+    sel = tr["step"] == "Feed"
+    m = 1e3 * np.clip(tr["out_L"][res["species"].index("CO2")][sel], 0, None)
+    te = g.time_s[g.molar_flow_mmol_s > thr].min() if (g.molar_flow_mmol_s > thr).any() else np.nan
+    tm = tr["t"][sel][m > thr].min() if (m > thr).any() else np.nan
+    if np.isnan(te) and np.isnan(tm):
+        res_ = "no front in either (timing not evaluable)"
+    elif np.isnan(te) or np.isnan(tm):
+        res_ = "FAIL (front in one only)"
+    else:
+        res_ = ok(abs(tm / te - 1) <= GATE_MEAS["co2_rel"])
+    return dict(cycle=cyc, threshold_mmol_s=thr, exp_max_mmol_s=g.molar_flow_mmol_s.max(), model_max_mmol_s=m.max(),
+                exp_front_s=te, model_front_s=tm, result=res_)
+
+
+def h2_partial_balance(res, cyc=37):
+    """Gate 3c: H2 streams of cycle `cyc` [mmol]; measured where GC samples exist (sampled windows only)."""
+    c = res["cycle"]
+    sp, tr = res["species"], res["traces"][cyc]
+    iH = sp.index("H2")
+    integ = {r["step"]: r for r in h2_step_integrals(res, cyc)}
+    full = {}
+    for n, a, b in step_windows(res):
+        sel = tr["step"] == n
+        out_L, in_0 = 1e3 * tr["out_L"][iH][sel], 1e3 * tr["in_0"][iH][sel]
+        full[n] = (np.trapezoid(np.clip(out_L, 0, None), tr["t"][sel]), np.trapezoid(np.clip(-out_L, 0, None), tr["t"][sel]),
+                   np.trapezoid(np.clip(-in_0, 0, None), tr["t"][sel]))       # out at L, in at L, out at 0
+    feed = 1e3 * c.feed_flow * c.y_feed["H2"] * c.t_feed
+    rows = [dict(stream="H2 fed (z = 0, Feed)", measured="no — set point (Table 5.4 flow x composition)",
+                 measured_mmol=feed, model_window_mmol=feed, model_step_mmol=feed)]
+    for n, lab, k in (("Feed", "product (z = L, Feed)", 0), ("ED1", "ED gas (z = L, ED1)", 0), ("ED2", "ED gas (z = L, ED2)", 0),
+                      ("ED3", "ED gas (z = L, ED3)", 0), ("Blow", "blowdown (z = 0)", 2), ("Purge", "purge outflow (z = 0)", 2),
+                      ("Purge", "purge H2 in (z = L)", 1), ("EP3", "EP gas in (z = L, EP3-1)", 1), ("Press", "pressurisation H2 in (z = L)", 1)):
+        r = integ.get(n)
+        meas = (k != 1) and r is not None and r["n"] >= 2
+        val = full["EP3"][1] + full["EP2"][1] + full["EP1"][1] if n == "EP3" else full[n][k]
+        rows.append(dict(stream=lab, measured=f"yes, {r['n']} samples, {r['window']}" if meas else "no (no samples, no set point)",
+                         measured_mmol=r["measured_mmol"] if meas else np.nan, model_window_mmol=r["model_mmol"] if meas else np.nan,
+                         model_step_mmol=val))
+    return pd.DataFrame(rows)
+
+
+def temperature_peaks(res, cycles=range(1, 11)):
+    """Gate 3d: thermocouple peak per cycle (cycles 1-10, Fig. 5.18b): rise above T_feed, peak time, ordering.
+    Window of cycle k: from mid-blowdown of cycle k-1 to mid-blowdown of cycle k, where all three signals are flat,
+    so that each peak (feed front or pressurisation heating) is an interior maximum; peak time from the window start."""
+    c = res["cycle"]
+    t, T = temperature_trace(res, list(range(1, max(cycles) + 1)))
+    e = read("psa_c1-10_T")
+    T0, Tf = c.time, c.T_feed
+    t_mid = c.t_feed + 3 * c.t_eq + c.t_blow / 2
+    rows = []
+    for k in cycles:
+        a, b = (k - 1) * T0 + t_mid - T0, (k - 1) * T0 + t_mid
+        for i, s in enumerate(TC):
+            g = e[(e.series == s) & (e.time_s >= a) & (e.time_s < b)]
+            sel = (t >= a) & (t < b)
+            je, jm = g.temperature_K.values.argmax(), T[i][sel].argmax()
+            re_, rm = g.temperature_K.values[je] - Tf, T[i][sel][jm] - Tf
+            te, tm = g.time_s.values[je] - a, t[sel][jm] - a
+            rows.append(dict(cycle=k, tc=s, exp_rise_K=re_, model_rise_K=rm, rise_rel_err=rm / re_ - 1,
+                             exp_time_s=te, model_time_s=tm, time_err_s=tm - te, time_rel_err=tm / te - 1))
+    df = pd.DataFrame(rows)
+    df["ok"] = (df.rise_rel_err.abs() <= GATE_MEAS["rise_rel"]) & (df.time_rel_err.abs() <= GATE_MEAS["tpeak_rel"])
+    dead = np.median(np.diff(np.sort(e[e.series == "Top"].time_s.values)))      # record spacing: closer = simultaneous
+
+    def same_order(g):
+        sg = lambda x: np.sign(np.where(np.abs(x) <= dead, 0.0, x))
+        te, tm = g.exp_time_s.values, g.model_time_s.values
+        return all(sg(te[j] - te[i]) == sg(tm[j] - tm[i]) for i in range(3) for j in range(i + 1, 3))
+    return df, df.groupby("cycle").apply(same_order, include_groups=False)
+
+
+def measured_gates(res):
+    """Gates 3a-3d of the step-3 decision for one case (cor_exp or a band member)."""
+    pr = pressure_by_type(res)
+    h2 = pd.DataFrame(h2_step_integrals(res, 1) + h2_step_integrals(res, 37))
+    co2 = pd.DataFrame([co2_feed_front(res, 1), co2_feed_front(res, 37)])
+    bal = h2_partial_balance(res)
+    tp, order = temperature_peaks(res)
+    ev = h2[h2.result != "not evaluable"]
+    summary = dict(case=res["name"], p_rms_bar=np.sqrt((pr.n * pr.rms_bar ** 2).sum() / pr.n.sum()),
+                   h2_steps_pass=f"{(ev.result == 'PASS').sum()}/{len(ev)}", h2_max_abs_err=ev.rel_err.abs().max(),
+                   product_window_err=bal.iloc[1].model_window_mmol / bal.iloc[1].measured_mmol - 1,
+                   T_peaks_ok=f"{int(tp.ok.sum())}/{len(tp)}", T_order_ok=f"{int(order.sum())}/{len(order)}",
+                   rise_err_median=tp.rise_rel_err.median(), ppm_css=res["perf"]["ppm"], rec_css=res["perf"]["recovery_pct"],
+                   rec_c37=perf_at(res, 37)["recovery_pct"])
+    return dict(pressure=pr, h2=h2, co2=co2, balance=bal, tpeaks=tp, order=order, summary=summary)
+
+
+def rung_c(results):
+    """Rung c: the corrected model on all 18 of the author's simulations (17 of Table 5.10 + the experiment, p.256)."""
+    sim = pd.read_csv(BENCH / "lopes2010_psa_simulations.csv")
+    exp = pd.read_csv(BENCH / "lopes2010_psa_experiment.csv").iloc[0]
+    rows = []
+    for _, s in sim.iterrows():
+        rows.append((int(s.sim), cor_case(int(s.sim)), s))
+    rows.append((18, "cor_exp", exp))
+    out = []
+    for k, n, s in rows:
+        if n not in results:
+            continue
+        p = results[n]["perf"]
+        pa = 1e6 * (1 - s.h2_purity_pct / 100)
+        out.append(dict(sim=k, case=n, cycle=s.cycle, P_high=s.P_high_bar, T=s.T_feed_K, rec_author=s.h2_recovery_pct, rec_model=p["recovery_pct"],
+                        d_rec_pp=p["recovery_pct"] - s.h2_recovery_pct, ppm_author=pa, ppm_model=p["ppm"],
+                        ppm_ratio=p["ppm"] / pa if pa > 0 else np.nan, co_author=s.co_ppm, co_model=p["co_ppm"],
+                        cycles=results[n]["cycles"], css=results[n]["css"],
+                        impurity=ok(0.5 <= p["ppm"] / pa <= 2) if pa > 0 else "– (author 0 ppm)",
+                        recovery=ok(abs(p["recovery_pct"] - s.h2_recovery_pct) <= 2)))
+    df = pd.DataFrame(out).sort_values("sim").reset_index(drop=True)
+    g, pairs = [], pd.DataFrame()
+    if len(df) == 18:
+        for lab, d in (("18 simulations", df), ("17 simulations (Table 5.10)", df[df.sim <= 17])):
+            rr = spearmanr(d.rec_author, d.rec_model)[0]
+            rp = spearmanr(d.ppm_author, d.ppm_model)[0]
+            g += [dict(check=f"Spearman, recovery ({lab})", value=f"{rr:.3f}", limit=">= 0.9", result=ok(rr >= GATE["rho_rec"])),
+                  dict(check=f"Spearman, ln(impurity ppm) ({lab})", value=f"{rp:.3f}", limit=">= 0.8", result=ok(rp >= GATE["rho_ppm"]))]
+        S = df.set_index("sim")
+        pr = []
+        for a, b, what in PAIRS:
+            for q in ("rec", "ppm"):
+                da, dm = S.loc[b, f"{q}_author"] - S.loc[a, f"{q}_author"], S.loc[b, f"{q}_model"] - S.loc[a, f"{q}_model"]
+                pr.append(dict(pair=f"{a} -> {b}", change=what, quantity="recovery [pp]" if q == "rec" else "impurity [ppm]",
+                               author=da, model=dm, diff=dm - da, same_sign=ok(np.sign(da) == np.sign(dm))))
+        pairs = pd.DataFrame(pr)
+        nbad = (pairs.same_sign == "FAIL").sum()
+        g.append(dict(check="pairwise effects with the same sign (Table 5.10 pairs)", value=f"{len(pairs) - nbad}/{len(pairs)}",
+                      limit="all", result=ok(nbad == 0)))
+        g.append(dict(check="impurity within 2x of the author", value=f"{(df.impurity == 'PASS').sum()}/{(df.impurity != '– (author 0 ppm)').sum()}",
+                      limit="all", result=ok((df.impurity != "FAIL").all())))
+        g.append(dict(check="recovery within 2 pp of the author", value=f"{(df.recovery == 'PASS').sum()}/{len(df)}",
+                      limit="all", result=ok((df.recovery == "PASS").all())))
+    return df, pd.DataFrame(g), pairs
+
+
+def decision(results):
+    """Tables of the step-3 decision (2026-10-10): rung c, holdup diagnostic, measured-data gates, band."""
+    t = {}
+    t["c_sims"], t["c_gate3"], t["c_pairs"] = rung_c(results)
+    cor = {n: r for n, r in results.items() if n.startswith("cor_")}
+    g1 = [dict(check="CSS reached, all corrected-model cases", value=f"{sum(r['css'] for r in cor.values())}/{len(cor)}",
+               limit="all", result=ok(all(r["css"] for r in cor.values()))),
+          dict(check="per-cycle mole balance, worst cycle of all corrected-model cases",
+               value=f"{max(abs(pd.DataFrame(r['history']).closure).max() for r in cor.values()):.1e}", limit="< 1e-3",
+               result=ok(max(abs(pd.DataFrame(r['history']).closure).max() for r in cor.values()) < GATE["closure"]))]
+    if "cor_exp" in results and "cor_exp_grid_2N" in results:
+        p1, p2 = results["cor_exp"]["perf"], results["cor_exp_grid_2N"]["perf"]
+        drec, dppm = abs(p2["recovery_pct"] - p1["recovery_pct"]), abs(p2["ppm"] / p1["ppm"] - 1)
+        g1 += [dict(check=f"grid N = {N} -> {2 * N} (experiment cycle): recovery", value=f"{drec:.3f} pp", limit="< 0.3 pp",
+                    result=ok(drec < GATE["grid_rec_pp"])),
+               dict(check=f"grid N = {N} -> {2 * N} (experiment cycle): impurity ppm", value=f"{100 * dppm:.1f} %", limit="< 10 %",
+                    result=ok(dppm < GATE["grid_ppm_rel"]))]
+    t["c_gate1"] = pd.DataFrame(g1)
+    if "dg_sim13_betaA_ep_h2" in results:
+        t["holdup"], t["holdup_capacity"] = holdup(results["dg_sim13_betaA_ep_h2"])
+    if "cor_exp" in results:
+        mg = measured_gates(results["cor_exp"])
+        t.update({f"m_{k}": v for k, v in mg.items() if k not in ("summary", "order")})
+        t["m_order"] = mg["order"]
+        band = [mg["summary"]] + [measured_gates(results[n])["summary"] for n in sorted(cor)
+                                  if n.startswith("cor_exp_") and n != "cor_exp_grid_2N"]
+        t["m_band"] = pd.DataFrame(band)
+    return t
+
+
 def step_balance(res):
     """Per-step, per-component moles [mmol] over the last (CSS) cycle: + enters the bed, - leaves it."""
     sp = res["species"]
@@ -689,15 +964,24 @@ def main():
     todo = {n: s for n, s in cases().items()
             if (not a.only or n in a.only.split(",")) and (a.force or not (CASES_DIR / f"{n}.pkl").exists())}
     if todo and not a.report_only:
-        order = sorted(todo, key=lambda n: (n != "grid_2N", n))          # longest first
+        order = sorted(todo, key=lambda n: ("grid_2N" not in n, n))          # longest first
         with ProcessPoolExecutor(a.workers) as ex:
             futs = {ex.submit(run_case, n, todo[n]): n for n in order}
             for f in as_completed(futs):
                 if f.exception() is not None:
                     print(f"[{futs[f]}] FAILED: {f.exception()!r}", flush=True)
     results, t = analyse()
+    t.update(decision(results))
     for k, v in t.items():
-        v.to_csv(OUT / f"{k}.csv", index=False)
+        if isinstance(v, pd.DataFrame):
+            v.to_csv(OUT / f"{k}.csv", index=False)
+    if "cor_exp" in results:
+        cor = results["cor_exp"]
+        fig_pressure(cor, OUT / "pressure_cor.png")
+        fig_flows(cor, OUT / "flows_cor.png")
+        fig_temperature(cor, OUT / "temperature_cor.png")
+    if len(t["c_sims"]):
+        fig_sims(t["c_sims"], OUT / "sims_cor.png")
     base = results["baseline"]
     fig_pressure(base, OUT / "pressure.png")
     fig_flows(base, OUT / "flows.png")
@@ -736,7 +1020,8 @@ def followup(t):
 
 **Principle.** The author's 17 simulations (Table 5.10, Figs 5.20-5.23) are a verification target for the
 implementation; inferring from them what the author did is legitimate. The PSA experiment is not used to choose
-anything. Rung c and the experiment rerun were **not** done: rung a does not meet its targets (below).
+anything. At the time, rung c and the experiment rerun were **not** done: rung a did not meet its targets (below);
+both were run after the step-3 decision (section above).
 
 ### 1. What the thesis says (quoted)
 
@@ -780,9 +1065,9 @@ Target: impurity within a factor of 2 and recovery within 2 pp of Table 5.10.
 * **(ii) beta_P per step type**, fitted only to Fig. 5.18a: ED 7.33, Blow 0.078, EP 0.087 s-1 (objective 0.048 vs
   1.20 bar2 for one constant; RMS per step 0.03-0.16 bar, `fit_bcs_beta.csv`). It describes the experiment's valves
   much better but moves the model away from the author (impurity 15-110x).
-* **The author's own beta_P.** Fitted to his simulated sim-13 pressure (Fig. 5.20a, digitised): **0.102 s-1**, each
+* **The author's own beta_P.** Fitted to the author's simulated sim-13 pressure (Fig. 5.20a, digitised): **0.102 s-1**, each
   exponential step alone 0.09-0.11 s-1 (EP included). With it our sim-13 pressure, loading profiles and N2 front
-  coincide with his (table below).
+  coincide with the author's (table below).
 * **(iii) Purge flow.** Not the cause. If the extra purge time costs only its H2 (eq. 5.49), the author's recovery
   changes imply 0.24 (sims 1->2), 0.26 (3->4), 0.23 (9->10) and 0.23 mmol/s (16->17), the same as our 0.261 mmol/s
   fitted to Fig. 5.19.
@@ -802,7 +1087,7 @@ H2 leaving the bed per step, sim 13 (author's beta_P, EP = H2), author's line in
 
 At the end of every step our pressure (open end and interior) and H2 loadings coincide with the author's within
 1 % (Fig. 5.21a), yet our column releases 26-43 % more H2 in each ED step and 25 % more in the blowdown, and needs
-about 20 % more H2 to pressurise (from eq. 5.49 with his recovery and productivity). Equations 5.3 and 5.6 include
+about 20 % more H2 to pressurise (from eq. 5.49 with the author's recovery and productivity). Equations 5.3 and 5.6 include
 the macropore gas exactly as we do, so the thesis does not explain the difference. The extra blowdown loss
 (about 12 mmol per cycle) is the 4 pp recovery deficit.
 
@@ -845,7 +1130,7 @@ Most likely causes of the recovery gap, ranked:
    pressurisation) although pressures and loadings coincide. Something in the author's implementation holds less
    gas than eqs 5.3/5.6 with eps = 0.404 and eps_p = 0.627 imply (a different voidage or porosity in the code, or
    macropore gas not exchanging with the bulk on the step time scale). Not resolvable from the thesis text.
-2. Feed flow basis: his productivity/recovery ratios imply 0.6-1.3 % more feed H2 per cycle (1 atm instead of
+2. Feed flow basis: the author's productivity/recovery ratios imply 0.6-1.3 % more feed H2 per cycle (1 atm instead of
    1 bar?); worth < 0.5 pp.
 3. Purge flow: excluded (above).
 
@@ -863,6 +1148,218 @@ Options for the project lead:
 """
 
 
+def decision_text(t):
+    """Report section of the step-3 decision (2026-10-10)."""
+    cs, g3, pairs = t["c_sims"], t["c_gate3"], t["c_pairs"]
+    d = cs.d_rec_pp
+    rp = pairs[pairs.quantity == "recovery [pp]"] if len(pairs) else pairs
+    h2, co2, bal, tp, order = t["m_h2"], t["m_co2"], t["m_balance"], t["m_tpeaks"], t["m_order"]
+    ev = h2[h2.result != "not evaluable"]
+    hold, cap = t.get("holdup", pd.DataFrame()), t.get("holdup_capacity", {})
+    f_c = {"P_high": "{:.0f}", "T": "{:.0f}", "rec_author": "{:.2f}", "rec_model": "{:.2f}", "d_rec_pp": "{:+.2f}", "ppm_author": "{:.2f}", "ppm_model": "{:.2f}",
+           "ppm_ratio": "{:.2f}", "co_author": "{:.3g}", "co_model": "{:.3g}"}
+    f_h = {c: "{:.2f}" for c in ("interparticle", "macropore", "adsorbed", "total", "author", "ratio", "total_excl_ads_volume",
+                                 "author_gas_scale", "max_pore_fraction_filled")}
+    imp_ok = (cs.impurity == "PASS").sum()
+    imp_n = (cs.impurity != "– (author 0 ppm)").sum()
+    bad = cs[cs.impurity == "FAIL"]
+    big = rp[rp.author.abs() > 1.0]
+    amp = big.model / big.author
+    byc = cs.groupby(["cycle", "P_high"]).d_rec_pp.agg(["min", "max", "size"])
+    off_rows = "; ".join(f"cycle {c} at {pp:.0f} bar ({r['size']:.0f} sims): {r['min']:+.1f} to {r['max']:+.1f} pp"
+                         for (c, pp), r in byc.iterrows())
+    nfail = pairs[pairs.same_sign == "FAIL"]
+    return f"""## Step-3 decision (2026-10-10): reframing, rung c, gas holdup, measured cyclic data
+
+### Reframing: what is measured and what is simulated
+
+* p.256: "it was concluded that a hydrogen recovery of 81.6% was obtained in the PSA experiment with a H2 purity
+  of 99.98054% contaminated with 63 ppm of CO (simulated values) and a process productivity of 101.1 molH2
+  kgads-1 day-1." p.241 (chapter 6) states the practice: "Due to the small number of experimental points, report
+  experimental values of these performance parameters may not be very accurate. Since the simulation predicts with
+  good accuracy the experimental results obtained, the performance parameters based on simulated results were
+  reported."
+* **The PSA experiment's purity, CO, recovery and productivity are the author's simulated values.** Earlier versions
+  of this report (and the step-3 request) called them "experimental" or "measured" **by mistake**: gate 2 of the
+  first comparison compared our model with the author's model, not with measurements. They are now treated as the
+  author's **18th simulation** (verification, together with Table 5.10).
+* **Measured cyclic data** (validation from now on): outlet molar flows per species at the GC sample times,
+  cycles 1 and 37 (Fig. 5.19); pressure, cycle 1 (Fig. 5.18a); thermocouples, cycles 1-10 (Fig. 5.18b) and
+  cycles 1 and 37 (Fig. 5.19). Feed flow, composition, step times and pressures are set points (Table 5.4).
+  Purge flow, pressurisation flow and EP gas were not reported.
+
+**Corrected model** (all results in this section): pre-declared baseline (E7 kinetics, `taqvi_levan`, assumed
+thermal values, transport group per Table 5.10) + beta_P = 0.102 s-1 (author's simulated Fig. 5.20a) + EP inflow =
+pure H2. Both corrections come from the author's simulations (basis B, `data/PROVENANCE.md`); no measured data and
+no performance value were used to set anything.
+
+### Verdict
+
+| check | result |
+|---|---|
+| Gate 1, numerical (corrected model) | {verdict(t["c_gate1"])} |
+| Verification, 18 author simulations: impurity within 2x | {imp_ok}/{imp_n} (sim 5: author 0 ppm, not rated) — {"PASS" if imp_ok == imp_n else "FAIL"} |
+| Verification: recovery within 2 pp | {(cs.recovery == "PASS").sum()}/{len(cs)} — **FAIL**, offset {d.min():+.1f} to {d.max():+.1f} pp (mean {d.mean():+.2f}, sd {d.std():.2f}) — accepted as a documented discrepancy |
+| Verification: Spearman, pairwise signs | {"; ".join(f"{r.check.replace('Spearman, ', '')}: {r.value} {r.result}" for _, r in g3.iterrows() if r.check.startswith(("Spearman", "pairwise")))} |
+| 3a. Pressure, cycle 1 (Fig. 5.18a) | RMS {t["m_band"].iloc[0].p_rms_bar:.2f} bar overall, per step type below (reported, no limit declared) |
+| 3b. H2 outflow per step, cycles 1 and 37, +-10 % | {(ev.result == "PASS").sum()}/{len(ev)} evaluable steps pass — **{"PASS" if (ev.result == "PASS").all() else "FAIL"}**; ED/EP/Press: no samples |
+| 3b. CO2 front in the feed step, +-10 % | not evaluable: no CO2 front reaches z = L during feed, in the experiment or the model |
+| 3c. H2 recovery at cycle 37 from measured streams, +-3 pp | **not evaluable**: the measured streams do not close the H2 balance (partial balance below) |
+| 3d. Thermocouples, cycles 1-10 (rise 30 %, peak time 20 %, ordering) | {int(tp.ok.sum())}/{len(tp)} peaks, ordering {int(order.sum())}/{len(order)} cycles — **{"PASS" if tp.ok.all() and order.all() else "FAIL"}** |
+
+**Can step 3 be closed?** Not on the declared gates. Numerics pass, and the verification reproduces the author's
+ranking (Spearman {g3.value.iloc[0]} recovery, {g3.value.iloc[1]} impurity) and {imp_ok} of {imp_n} impurities within 2x; the
+recovery offset is accepted as a documented discrepancy. But two of the measured-data gates fail (3b H2 per step
+{(ev.result == "PASS").sum()}/{len(ev)}, 3d thermocouples {int(tp.ok.sum())}/{len(tp)}) and 3c cannot be evaluated from the measured streams. None of the
+failures traces to a coding bug (causes in sections 1 and 3). Starting step 4 needs the project lead to accept them
+as documented limitations, or to decide otherwise.
+
+### Gate 1 — numerical, corrected model
+
+{md(t["c_gate1"])}
+
+### 1. Code-to-code verification: rung c, all 18 author simulations
+
+Simulation 18 is the experiment cycle (author's simulated values, p.256). Sims 1, 2 and 13 are the identical runs of
+the follow-up ladder (`ver_sim01/02_betaA_ep_h2`, `dg_sim13_betaA_ep_h2`).
+
+{md(cs.drop(columns=["case"]), f_c)}
+
+{md(g3)}
+
+![rung c](sims_cor.png)
+
+Pairwise effects (Table 5.10 pairs; `diff` = model effect - author effect):
+
+{md(pairs, {"author": "{:+.3g}", "model": "{:+.3g}", "diff": "{:+.3g}"}) if len(pairs) else ""}
+
+**Is the recovery offset constant?** No: {off_rows} (all 18: mean {d.mean():+.2f}, sd {d.std():.2f} pp). It grows with
+P_high and is smallest in cycle B. Recovery trends are preserved in direction and order: Spearman {g3.value.iloc[0]}, and
+all {len(rp)} recovery effects have the author's sign. Their size is overstated by a factor of {amp.median():.2f} (median;
+range {amp.min():.2f}-{amp.max():.2f} over the {len(big)} effects above 1 pp). An optimiser on this model would move in the same
+directions as on the author's model but see slightly steeper recovery trade-offs. A constant offset would keep the
+trade-offs exactly; this one does not.
+
+Impurity: {imp_ok}/{imp_n} within 2x. The {len(bad)} failures are sims {", ".join(str(k) for k in bad.sim)} (author
+{", ".join(f"{v:.1f}" for v in bad.ppm_author)} ppm; ours {", ".join(f"{v:.1f}" for v in bad.ppm_model)} ppm), all below 6 ppm on the author's side; Table 5.10
+prints purity to 1e-5 %, i.e. 0.1 ppm. The experiment cycle (sim 18) gives {cs.set_index("sim").loc[18, "ppm_model"]:.0f} ppm and
+{cs.set_index("sim").loc[18, "co_model"]:.1f} ppm CO against the author's simulated 195 and 63 ppm. Sign failures: {"; ".join(f"{r.pair} ({r.change}, {r.quantity}: author {r.author:+.1f}, ours {r.model:+.1f})" for _, r in nfail.iterrows())}.
+Both are blowdown-time reductions: the author's impurity rises by 5-6 ppm (25-48 %), ours barely moves (< 5 %).
+
+### 2. Gas-holdup diagnostic (time-boxed)
+
+Gas capacity per unit bed volume used: eps + (1 - eps) eps_p = {cap.get("eps", np.nan):.3f} + (1 - {cap.get("eps", np.nan):.3f}) x
+{cap.get("eps_p", np.nan):.3f} = **{cap.get("gas_capacity", np.nan):.3f}** (Table 5.4 bed porosity, Table 4.5 pellet porosity); nothing
+else stores gas (no dead volume, no micropore gas term; the adsorbed phase is the absolute loading q, eq. 2.2).
+Bulk density (1 - eps) rho_p = {cap.get("rho_b", np.nan):.1f} kg/m3.
+
+H2 released per step, simulation 13 at CSS (corrected model) [mmol], split by phase from the step-end states;
+`author` = the author's Fig. 5.20b line integrated; `author_gas_scale` = factor on our gas holdup that would reproduce the
+author's release with our adsorbed-phase change; `total_excl_ads_volume` = the same states with the pore gas
+excluding the adsorbed-phase volume; `max_pore_fraction_filled` = largest share of eps_p occupied by the adsorbed
+phase at the end of the step:
+
+{md(hold, f_h) if len(hold) else ""}
+
+What the thesis supports, quoted:
+* eq. 5.3 (p.169): accumulation eps dC/dt in the bulk and the film flux (1 - eps) a_p k_f (C - C_s); eq. 5.6 (p.170):
+  d<C_m>/dt = (Omega_m D_p / R_p^2)(C_s - <C_m>) - (rho_p/eps_p) d<q>/dt, "eps_p ... the particle ... porosity".
+* Table 4.5 (p.122): eps_p = 0.627, rho_p = 786, rho_s = 2110 kg/m3 (eps_p = 1 - rho_p/rho_s: total porosity; rho_s
+  "determined by helium pycnometry", p.36).
+* p.42: "The value obtained from the gravimetric unit is called excess amount adsorbed, q_exc. In order to transform
+  this value to the real amount adsorbed, buoyancy corrections with equation (2.2) were performed in all the
+  experiments." p.31: "we have assumed that the density of the adsorbed phase is equal to the density of the liquid
+  at its boiling point at 1 atm" (CO2 1277.78, CH4 422.53, N2 808.60, H2 78, CO 788.6 kg/m3). Nomenclature (p.203):
+  q_i "absolute adsorbed phase concentration".
+
+The only holdup variant with textual support is therefore: absolute loadings + total porosity count the gas in the
+volume the adsorbed phase occupies twice, so exclude that volume from the pore gas. It changes the H2 released per
+step by **less than 1.5 %** (column `total_excl_ads_volume`) — far from the 27-50 % gap. The factor needed on our
+gas holdup is not one number either ({hold.author_gas_scale.min():.2f}-{hold.author_gas_scale.max():.2f} across the steps), so no single
+porosity or voidage reproduces the author's step releases, and the eps_p = 0.35 diagnostic that recovers the author's
+recovery makes impurity 30x worse (follow-up section 2). **Not adopted; our holdup (eqs 5.3, 5.6 as printed) is
+kept.** The holdup treatment is a declared assumption (`data/PROVENANCE.md`); the adsorbed-volume variant is below
+1.5 % and is not carried as a separate band member.
+
+### 3. Validation against the measured cyclic data (gates declared before running)
+
+**a. Pressure, cycle 1** (Fig. 5.18a measured; beta_P from the author's simulated curve, so this is a check):
+
+{md(t["m_pressure"], {"rms_bar": "{:.3f}"})}
+
+![pressure, corrected model](pressure_cor.png)
+
+**b. H2 leaving the bed per step** (GC samples; window = span of the samples in the step; trapezoid rule on the
+sample times for both, `model_exact_mmol` = model integrated on its own time grid):
+
+{md(h2, {"measured_mmol": "{:.2f}", "model_mmol": "{:.2f}", "model_exact_mmol": "{:.2f}", "rel_err": "{:+.1%}"})}
+
+CO2 at z = L in the feed step (front = first sample above 10 % of the CO2 feed flow):
+
+{md(co2, {"threshold_mmol_s": "{:.3f}", "exp_max_mmol_s": "{:.4f}", "model_max_mmol_s": "{:.2e}", "exp_front_s": "{:.0f}", "model_front_s": "{:.0f}"})}
+
+The measured CO2 values in the feed step (0.004 mmol/s) are the plotted zero line; no front, so its timing cannot be
+compared.
+
+Failures of 3b, read from the samples (not tuned): cycle-1 feed — the H2 front that displaces the initial He reaches
+z = L before 69 s in the experiment and between 69 and 81 s in the model; the single 69-s sample (1.34 vs
+0.10 mmol/s) makes the -41 %. Cycle-37 blowdown — the model's H2 flow decays faster than measured after 169 s,
+consistent with beta_P = 0.102 s-1 (author's simulations) against about 0.08 s-1 fitted to the measured blowdown
+pressure (follow-up section 2). Cycle-37 purge — the model's H2 outflow is 28 % above the measured one with the
+purge flow fitted to the cycle-1 purge (where it passes, +6 %).
+
+![outlet flows, corrected model](flows_cor.png)
+
+**c. H2 balance at cycle 37.** Measured: the product-end outflow during feed (4 samples, 40-97 s; none in 0-40 s),
+the feed-end outflow during blowdown (7 samples from 169 s; the first 20 s of the step are not sampled) and during
+the purge (3 samples). Not measured and without a reported set point: ED gas, EP inflow, purge H2 inflow,
+pressurisation H2. The feed H2 is the set point (Table 5.4). Eq. 5.49 needs the purge and pressurisation H2, so an
+experimental recovery cannot be formed; nothing was filled in by fitting. Partial balance [mmol per cycle]:
+
+{md(bal, {"measured_mmol": "{:.2f}", "model_window_mmol": "{:.2f}", "model_step_mmol": "{:.2f}"})}
+
+Model recovery at cycle 37 (eq. 5.49): {t["m_band"].iloc[0].rec_c37:.2f} % (author's simulated value 81.6 %).
+
+**d. Thermocouples, cycles 1-10** (Fig. 5.18b). Window of each cycle: mid-blowdown of the previous cycle to
+mid-blowdown of this one (signals flat there, so each peak — feed front or pressurisation heating — is an interior
+maximum); rise above T_feed = 303 K; peak time from the window start; ordering = sign of the peak-time difference
+of every thermocouple pair, peaks closer than the record spacing counting as simultaneous. A first implementation
+with windows starting at the feed step put the Middle and Top peaks on the window boundary (pressurisation heating
+at the end of the cycle) and was replaced before any corrected-model result was evaluated.
+
+{md(tp, {"exp_rise_K": "{:.2f}", "model_rise_K": "{:.2f}", "rise_rel_err": "{:+.0%}", "exp_time_s": "{:.0f}", "model_time_s": "{:.0f}",
+         "time_err_s": "{:+.0f}", "time_rel_err": "{:+.0%}"})}
+
+![temperatures, corrected model](temperature_cor.png)
+
+### 4. Uncertainty band of the cyclic validation (reported, not selected from)
+
+{md(t["m_band"], {"p_rms_bar": "{:.3f}", "h2_max_abs_err": "{:.0%}", "product_window_err": "{:+.1%}", "rise_err_median": "{:+.0%}",
+                  "ppm_css": "{:.1f}", "rec_css": "{:.2f}", "rec_c37": "{:.2f}"})}
+
+Members: corrected model (`cor_exp`); EP inflow = ED gas; `noncompetitive_h2`; Table 4.10 kinetics for all species;
+thermal parameters at the ends of their ranges. `product_window_err` = model / measured H2 product over the sampled
+window of cycle 37 - 1.
+
+### Limitations (draft)
+
+* **EP inflow composition (declared assumption).** Eq. 5.45 leaves C_inlet open and the text does not say how a
+  single column was equalised. Pure H2 reproduces the author's simulations; ED gas (tank emulation) is the physical
+  alternative. Both are in the band: they change the experiment-cycle impurity {t["m_band"].set_index("case").loc["cor_exp", "ppm_css"]:.0f} vs
+  {t["m_band"].set_index("case").loc["cor_exp_ep_ed", "ppm_css"]:.0f} ppm at the same recovery; the measured flows cannot distinguish them.
+* **Gas holdup / recovery offset (declared assumption).** Our model follows eqs 5.3 and 5.6 with the Table 4.5
+  porosity; at the same pressures and loadings it releases 27-50 % more H2 per depressurisation step than the
+  author's model, which the thesis does not explain. Consequence: recovery {d.min():+.1f} to {d.max():+.1f} pp against all 18 of the
+  author's simulations.
+* **Pressure law.** One beta_P (from the author's simulations) cannot follow the measured ED valves (plateau in about
+  1 s; RMS 0.7 bar in ED). The per-step-type fit to Fig. 5.18a is available but not used.
+* **Measured data are sparse.** No GC samples in ED, EP or Press; blowdown sampled from 20 s after its start; no
+  purge or pressurisation flow reported. Purity and recovery of the experiment were never measured.
+* **Thermal.** Top thermocouple rise 52-68 % low in every cycle (Middle -51 to +57 %), with assumed wall and solid
+  heat capacities (step 2); the Bottom thermocouple passes in all 10 cycles.
+"""
+
+
 def write_report(results, t):
     base = results["baseline"]
     c = base["cycle"]
@@ -874,21 +1371,21 @@ def write_report(results, t):
           "co2_ppm": "{:.2f}", "purity_pct": "{:.4f}", "productivity": "{:.1f}"}
     rt = t["runtime"]
     rb = rt[rt.case == "baseline"].iloc[0]
-    text = f"""# Step 3 — single-column PSA cycle to CSS, validated on the PSA experiment
+    text = f"""# Step 3 — single-column PSA cycle to CSS: verification against the author, validation on measured cyclic data
 
 Generated by `scripts/run_psa.py` (cases cached in `results/step3/cases/`). Thesis pages are printed pages.
 
-## Verdict
+{decision_text(t) if "m_band" in t and len(t["c_sims"]) == 18 else ""}
 
-Status after the follow-up: verification against the author's model is **incomplete** — impurity is reproduced
-within ~2x with two corrections inferred from the author's figures, recovery stays 4.0-4.6 pp low (target 2 pp).
-Rung c and the post-correction experiment comparison were not run. The gates below are those of the **first**
-comparison (pre-declared baseline).
+## Earlier record: first comparison (pre-declared baseline) and follow-up
 
-| gate | result |
+The gates in this part are those of the **first** comparison. Gate 2 there compared with the author's simulated
+performance of the experiment, called "experimental" at the time by mistake (see the reframing above).
+
+| gate (first comparison) | result |
 |---|---|
 | 1. Numerical (CSS, mole balance, grid) | {verdict(t["gate1"])} |
-| 2. Experiment (recovery, impurity ppm, CO ppm at CSS) | {"PASS" if gate2_pass else "FAIL"} |
+| 2. "Experiment" = author's simulated performance (recovery, impurity ppm, CO ppm at CSS) | {"PASS" if gate2_pass else "FAIL"} |
 | 3. Author's 17 simulations (rank correlation, effect signs) | {verdict(t["gate3"])} |
 
 {followup(t) if len(t.get("ladder", ())) else ""}
@@ -937,7 +1434,7 @@ CSS criterion: impurity ppm, recovery and the bed-averaged loading of every spec
 (relative) over the last 10 cycles, and every one of those 10 cycles closes its mole balance within 0.1 %.
 The thesis needed 240 cycles from the He-filled column (p.191); the baseline here needs {base["cycles"]}.
 
-## Gate 2 — experiment (held out until now)
+## Gate 2 — the author's simulated performance of the experiment (first comparison; called "experiment" then)
 
 {md(g2, f2)}
 
