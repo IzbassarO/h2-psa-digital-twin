@@ -73,6 +73,27 @@ matching data.
 | EP inflow composition | pure H2 (reproduces the author's simulations, basis B) | gas of the matching ED step (tank emulation of the partner bed) | eq. 5.45 leaves C_inlet open; the text never says how a single column was equalised (Fig. 5.5 shows a second column and a tank) |
 | gas holdup | interparticle eps C + macropore (1 - eps) eps_p C_m with eps_p = 0.627 (total pellet porosity, Table 4.5) and absolute loadings q (eq. 2.2, p.31), i.e. eqs 5.3 and 5.6 as printed | pore gas net of the adsorbed-phase volume (liquid densities, p.31): changes the H2 released per step by < 1.5 %; and the eps_p = 0.35 diagnostic | at identical pressures and loadings our model releases 27-50 % more H2 per depressurisation step than the author's (Fig. 5.20b); no holdup supported by the text reproduces it, and the implied gas-capacity factor differs per step (0.55-0.70), so it is not a single holdup parameter. Result: our recovery is 4-5 pp below the author's |
 
+### Layered bed (step 4, 2026-10-10)
+
+| item | used | basis / evidence |
+|---|---|---|
+| HY2SEPS bed porosity in the compact column | 0.394 (AC), 0.391 (ZEO) | ASSUMED: values of the 1.65-cm ch.3 breakthrough columns (Tables 3.10, 3.13); the compact column packing is not reported for these adsorbents |
+| HY2SEPS solid heat capacity | 880 (AC), 920 J/kg/K (ZEO) | ASSUMED (not reported); ranges in the YAML |
+| LDF factors | Omega_m = 8, Omega_c = 3 (AC), 15 (ZEO) | eq. 3.17 with cylindrical extrudates; p.98 "K_LDF = 3 Dc/rc2 for activated carbons"; p.104 "15 Dc/rc2 for zeolites" |
+| HY2SEPS macropore Dp | eq. 5.17 at operating conditions, tau = 2, no Knudsen term | The values quoted on pp.97/103 (e.g. H2 7.21e-5 m2/s) are molecular diffusion in He at 1 bar and 303 K divided by tau = 2 (Chapman-Enskog reproduces them within 3-14 %; p.96: Knudsen neglected, tau = 2). Used literally at 5-10 bar they would be 5-10x too large, so they serve as the check of eq. 5.17, not as model inputs |
+| gas thermal conductivity | modified Eucken per species + Bird eq. 9.3-17 mixture rule | ASSUMED: p.171 cites Bird et al. (2002) without the formula |
+| scalar Dax and kf of a multicomponent feed | mole-fraction mean of the species' mixture diffusivities (eq. 5.18) | ASSUMED: one Dax and one kf per layer; the thesis does not say which diffusivity enters eqs 5.20/5.23 |
+| U (eq. 5.29) | Churchill-Chu with T_w - T_inf = 10 K, air at 300 K, AISI 304 wall (14.9 W/m/K) | ASSUMED inputs (not reported) |
+| Yang (2008) emulation | single column, cycle time 200 s (feed 50, ED 10, blow 25, purge 50, press 35 s), P_low 1 bar, 303 K, purge H2 = 10 % of feed H2 | ASSUMED (`layered_4bed_yang2008.yaml: assumed_step4`); trend check e is order-of-magnitude |
+
+**Correlations vs the author's tables (gate 3 of step 4).** Recomputed for the compact-unit AC5-KS runs (Tables 5.7,
+5.9): Dp (eq. 5.17), lambda (5.21), hf (5.22) and kf (5.23) reproduce the tabulated values within 0.96-1.21. The
+Wakao-Funazkri axial dispersion stated for the PSA model (eq. 5.20) gives 51-55x the tabulated Dax; the ch.3
+correlation (eq. 3.18) gives 1.15-1.24x. The tabulated h_w = 55 and U = 50 W/m2/K are the same in every run and
+group and are not reproduced by eqs 5.31 (1.8-7.8x) and 5.29 (0.06-0.07x): they look like set values. Per the
+pre-declared rule the correlations (eq. 5.20, 5.31, 5.29) are used for the HY2SEPS layers anyway; Dax from eq. 3.18
+is the reported sensitivity.
+
 ### Simulated vs measured values in Lopes (2010), chapter 5
 
 | quantity | status | source |

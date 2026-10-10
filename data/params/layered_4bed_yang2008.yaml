@@ -28,3 +28,15 @@ results_at_99_999_purity:        # text p.385, experimental
   - {linear_velocity_cm_s: 3.9,  h2_recovery: 0.7593}
   - {linear_velocity_cm_s: 3.14, h2_recovery: 0.7543}
 trend: purity stays >= 99.999% up to ~200 s total cycle time at 5.2 cm/s, then falls; recovery rises with cycle time
+
+# ---- step-4 emulation (single column, our cycle builder). NOT in the paper: ASSUMED, declared before any run;
+# trend check e is order-of-magnitude only (HY2SEPS adsorbents instead of Calgon AC + 5A).
+assumed_step4:
+  cycle: "single-column Feed, ED1-2, Blow, Purge (H2), EP2-1, Press (H2); 2 equalisations as in Table 3"
+  cycle_time_s: 200              # paper: purity >= 99.999 % up to ~200 s total cycle time at 5.2 cm/s
+  times_s: {Feed: 50, ED: 10, Blow: 25, Purge: 50, Press: 35}   # 4-bed: feed = 1/4 of the cycle; sum = 200
+  P_low_bar: 1.0
+  T_feed_K: 303.0                # not stated; = the Lopes feed temperature
+  purge_to_feed_h2: 0.10         # purge H2 per cycle / feed H2 per cycle (typical 4-bed provide-purge); fixes the purge flow
+  wall_thickness_m: 0.0051       # (outside - inside diameter) / 2, Table 2
+  velocities_cm_s: [3.14, 3.9, 4.7, 5.2]   # superficial, at feed P and T (text p.385)
