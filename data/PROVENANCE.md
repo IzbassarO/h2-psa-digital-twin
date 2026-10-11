@@ -106,6 +106,19 @@ eps Dax / Dm = 20 + 0.5 Sc Re) is stated on p.172 for 3 < Re < 10000 and would b
 at the edge of its validity. Eq. 5.20 is not carried as a scenario. Wall heat transfer: see the two DECIDED rows
 above. Note for step 5: industrial-scale columns are close to adiabatic.
 
+### Disturbance variables (step 5, 2026-10-11)
+
+Bounds in `configs/disturbances.yaml`; mapping in `src/h2psa/design.py`. [V] = number read in the full text,
+[A] = abstract / secondary only (not used for a bound).
+
+| item | used | basis / evidence |
+|---|---|---|
+| adsorbent capacity factor phi | [0.70, 1.00], multiplies q_max of every species in both layers (K, a kept: loadings scale exactly by phi) | **ASSUMED range.** No peer-reviewed quantification of q_max loss in an H2 PSA bed was found, nor an H2 PSA simulation that reduces q_max by 10-30 %. Basis by analogy: (i) Air Products, *Hydrogen PSA Services and Solutions*, brochure 344-16-011 (2020), p.2: "low level impurities accumulate in adsorbents and cause capacity reduction over time" (qualitative, vendor) [V]; (ii) Azhagapillai et al. (2022), ACS Omega 7:6463, doi:10.1021/acsomega.1c03370, sec. 2.1: water capacity of 5A -8 % after 3 heptane exposures, 4A/5A/13X -62 to -76 % after methanol (harsh TSA conditions) [V]. Reading: 0.90-1.00 normal service; 0.70 end-of-life stress case; losses > 30 % documented only under contamination |
+| feed CH4, y_CH4 | [0.0168, 0.0231] (Lopes anchor 0.021 x [0.80, 1.10]) | reformer-digital-twin v3.0 (tag v3.0, commit f356b84; Latham 2011 Plant A, Xu-Froment kinetics), run read-only 2026-10-11 with `rdt.operate` (`run_case` fixed firing, `solve_firing_for_outlet_T` outlet T held at 1105.55 K): reformer-outlet CH4 slip (dry) 6.25-8.62 % over catalyst activity 0.10-0.20 (calibrated base 0.20) x load 0.7-1.1; base 7.81 % (factor 0.80-1.10). Ageing alone at held T_out: 8.11 -> 8.53 %; load at held T_out: flat. The factor is applied to the anchor's CH4: CH4 passes the shift unconverted and the shift dilutes the dry gas uniformly to first order. Cross-check: PSA-inlet CH4 3.0 % (IEAGHG 2017/02, base case stream 7) and 5.13 % (NETL 2022 stream 10) [V] |
+| feed CO, y_CO | [0.005, 0.015] | medium-temperature-shift exit 0.5-1.5 mol % CO (Johnson Matthey, *Water gas shift - LTS and MTS*, Americas H2 & Syngas Training Seminar 2025, slide 5; vendor training material) [V]; contains the Lopes feed (1.2 %) and NETL 2022 stream 10 (0.50 %, three shift reactors, conversion up to 97.2 %, p.54) [V]. Not used (different flowsheet, not an operating disturbance): HTS only 2.5-3.5 % "typical", 4.65 % dry in the base-case balance (IEAGHG 2017/02, sec. 2.4, 2.6) [V]; LTS 0.1-0.3 % (JM 2025) [V] |
+| composition rule | CO2 = anchor (CH4 + CO + CO2) - y_CH4 - y_CO; N2 of the anchor; H2 by difference | ASSUMED: total carbon of the dry gas kept (CH4 slip and CO slip trade against CO2); H2 then stays at the anchor value |
+| second feed anchor | NETL 2022 case 1 stream 10, H2O removed and renormalised (0.7502 H2 / 0.1896 CO2 / 0.0514 CH4 / 0.0050 CO / 0.0038 N2) | run at P_high <= 8.5 bar (design space), NOT at the plant's 24.5 bar: the H2 partial pressure must stay inside the 0-7 bar isotherm fits |
+
 ### Simulated vs measured values in Lopes (2010), chapter 5
 
 | quantity | status | source |

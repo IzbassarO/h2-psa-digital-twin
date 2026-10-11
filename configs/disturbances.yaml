@@ -1,0 +1,23 @@
+# Disturbance variables (step 5): uncertain at operation time, not chosen by the operator.
+# Mapping to the model: src/h2psa/design.py (build, feed_composition). Nominal = phi 1, anchor feed unchanged.
+# Literature details and the assumption status of every bound: data/PROVENANCE.md (step 5).
+
+variables:
+  phi:   {bounds: [0.70, 1.00], nominal: 1.0, units: "-",
+          meaning: "adsorbent capacity factor multiplying q_max of every species in both layers (ageing, contamination); K and the number of sites are kept",
+          source: "ASSUMED (no peer-reviewed quantification of q_max loss in an H2 PSA bed found). Basis by analogy: capacity loss of H2 PSA adsorbents by accumulating impurities is stated qualitatively by the vendor (Air Products 2020, Hydrogen PSA Services brochure 344-16-011, p.2); zeolite 5A loses 8 % water capacity after 3 heptane exposures and 4A/5A/13X 62-76 % after methanol (Azhagapillai et al. 2022, ACS Omega 7:6463, sec. 2.1). phi 0.90-1.00 = normal service, 0.70 = end-of-life stress case; losses > 30 % documented only under contamination"}
+  y_CH4: {bounds: [0.0168, 0.0231], nominal: 0.021, units: "mol fraction, dry",
+          meaning: "CH4 in the PSA feed (reformer CH4 slip passes the shift unconverted)",
+          source: "reformer-digital-twin v3.0 (tag v3.0, commit f356b84; Latham 2011 Plant A, Xu-Froment kinetics): reformer-outlet dry CH4 slip 6.25-8.62 % over catalyst activity 0.10-0.20 (calibrated 0.20, i.e. 50-100 % of fresh) and load 0.7-1.1, fixed firing or outlet T held, base 7.81 %; cross-check: PSA-inlet CH4 3.0-5.1 % dry (IEAGHG 2017/02 stream 7; NETL 2022 stream 10); factor 0.80-1.10 of the base, applied to the anchor's CH4 (the shift dilutes CH4, CO2 and H2 alike to first order). Lopes anchor 0.021 x [0.80, 1.10]"}
+  y_CO:  {bounds: [0.005, 0.015], nominal: 0.012, units: "mol fraction, dry",
+          meaning: "CO slip after the shift reactor(s)",
+          source: "medium-temperature shift exit 0.5-1.5 mol % CO (Johnson Matthey, Water gas shift - LTS and MTS, Americas H2 & Syngas Training Seminar 2025, slide 5); contains the Lopes feed (1.2 %) and NETL 2022 stream 10 (0.50 %, three shift reactors, p.54). Excluded as a different flowsheet, not an operating disturbance: HTS only 2.5-4.6 % dry (IEAGHG 2017/02, sec. 2.4 and 2.6), LTS 0.1-0.3 % (JM 2025)"}
+
+composition_rule: "CO2 = (CH4 + CO + CO2 of the anchor) - y_CH4 - y_CO (total carbon of the dry gas kept), N2 of the anchor, H2 = 1 - sum (design.feed_composition)"
+
+feed_anchors:
+  lopes:    {composition: "data/params/compact_column_lopes2010.yaml feed (Table 5.4): 0.79 H2 / 0.17 CO2 / 0.021 CH4 / 0.012 CO / 0.007 N2",
+             role: nominal, P_high_bar: "<= 8.5 (design space)"}
+  netl_dry: {composition: "data/params/industrial_feed_netl2022.yaml psa_feed (NETL 2022, case 1, stream 10), H2O removed and renormalised: 0.7502 H2 / 0.1896 CO2 / 0.0514 CH4 / 0.0050 CO / 0.0038 N2",
+             role: "second anchor (industrial feed); run at P_high <= 8.5 bar, NOT at the plant's 24.5 bar (outside the 0-7 bar isotherm range)",
+             disturbance_bounds: "same factors as the Lopes anchor"}

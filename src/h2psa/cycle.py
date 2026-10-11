@@ -272,7 +272,7 @@ class CycleRunner:
     # -------------------------------------------------------------- to CSS
     def run_to_css(self, y0=None, max_cycles: int = 2000, tol: float = 1e-4, window: int = 10,
                    record=(), log=None, profiles=(), accel: bool = False, memory: int = 5, tol_acc: float = 1e-6,
-                   stall: int = 20, tol_ppm: float | None = None):
+                   stall: int = 20, tol_ppm: float | None = None, censor: tuple | None = None, checkpoint=None):
         """Cycle until every CSS quantity (impurity ppm, recovery, bed-averaged loadings) changed by less than
         `tol` (relative) over the last `window` cycles and the cycle mole balance closes within 0.1 %.
         record: cycle numbers whose time series are kept (the last cycle is always kept).
@@ -285,7 +285,10 @@ class CycleRunner:
         or has not halved in `stall` accelerated cycles (stagnation at the integration-noise floor, or a stalled
         nonlinear transition); then plain cycles. CSS is only declared by the criterion above over >= `window` consecutive plain cycles
         (a plain cycle starts from the unmodified end state of the previous one); if 3 x window plain cycles do
-        not reach it, acceleration resumes with a fresh memory."""
+        not reach it, acceleration resumes with a fresh memory.
+        censor: (min_cycles, ppm_limit, window): stop a clearly infeasible point early (see `censored`); the result
+        then has css False and censored = the last impurity [ppm].
+        checkpoint: called as checkpoint(n, y) after cycle n with the start state of the next cycle (resume)."""
         y = self.m.y0.copy() if y0 is None else y0.copy()
         self.ref = (self.feed_bc[1].P, 0.0)
         hist, traces, profs = [], {}, {}
@@ -296,6 +299,7 @@ class CycleRunner:
         nv = self.m.nv - 2 * self.m.ns                    # cumulative mole counters are not part of the state
         aa = Anderson(self.m.yscale[:nv], memory, self._nonneg(), stall=stall) if accel else None
         plain, n_plain, n_acc = False, 0, 0               # plain: this cycle starts from the previous end state
+        cens = None
         while n < max_cycles:
             n += 1
             res = self.run_cycle(y, trace=n in record, profiles=n in profiles)
@@ -317,6 +321,9 @@ class CycleRunner:
                     y = res.y_end
                     css = True
                     break
+            if censor and censored([h["ppm"] for h in hist], *censor):
+                y, cens = res.y_end, res.perf["ppm"]
+                break
             if aa is not None and aa.active:
                 y_next, r = aa.step(y[:nv], res.y_end[:nv])
                 hist[-1]["residual"] = r
@@ -329,6 +336,8 @@ class CycleRunner:
                 plain, y = True, res.y_end
                 if aa is not None and n_plain >= 3 * window:
                     aa.reset()
+            if checkpoint:
+                checkpoint(n, y)
             if log and n % 10 == 0:
                 log(f"cycle {n}: ppm {res.perf['ppm']:.2f} rec {res.perf['recovery_pct']:.3f} change {rel:.1e} "
                     f"closure {res.perf['closure']:.1e}{' acc' if aa is not None and aa.active else ''} "
@@ -337,7 +346,7 @@ class CycleRunner:
         hist.append({"cycle": n + 1, "plain": True, **last.perf})
         traces[n + 1] = last.trace
         profs[n + 1] = last.profiles
-        return dict(history=hist, css=css, cycles=n, accelerated_cycles=n_acc, y_end=last.y_end, traces=traces,
+        return dict(history=hist, css=css, censored=cens, cycles=n, accelerated_cycles=n_acc, y_end=last.y_end, traces=traces,
                     perf=last.perf, profiles=profs, step_moles=last.steps, retries=self.retries,
                     runtime_s=time.perf_counter() - t0, cpu_s=time.process_time() - c0)
 
@@ -348,6 +357,13 @@ class CycleRunner:
         mask[:(ns - 1) * N] = True                        # C_i in G (the last row of G is the pressure deviation)
         mask[ns * N:3 * ns * N] = True                    # Cm, q
         return mask
+
+
+def censored(ppm, min_cycles=100, limit=1000.0, window=30):
+    """Early-stopping rule for a clearly infeasible point (step 5): after >= `min_cycles` cycles the impurity
+    `ppm[-1]` exceeds `limit` (10x the 100-ppm specification) and has increased over the last `window` cycles.
+    ppm: impurity per cycle so far (accelerated iterates included, as in the CSS history)."""
+    return len(ppm) >= max(min_cycles, window + 1) and ppm[-1] > limit and ppm[-1] > ppm[-1 - window]
 
 
 class Anderson:

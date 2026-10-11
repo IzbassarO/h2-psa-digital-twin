@@ -1,31 +1,39 @@
-# DRAFT (step 4) — design space for the step-6 surrogate / optimisation. Not used by any script yet.
+# Design space of the step-6 surrogate / optimisation (step 5, 2026-10-11; promoted from the step-4 DRAFT).
 # Process: single-column layered-bed PSA emulation of the compact LSRE unit (Lopes 2010, ch.5), cycle with
 # Feed, ED1..n, Blow, Purge (H2), EPn..1, Press (H2); frozen step-3 baseline model (see docs/validation/step3.md)
 # with the step-4 layered baseline: HY2SEPS-AC | HY2SEPS-ZEO, Dax eq. 3.18, h_w = 55 and U = 50 W/m2/K (Table 5.9),
 # CSS by warm start + Anderson acceleration (docs/validation/step4.md).
+# Mapping to the model: src/h2psa/design.py (build). Variables not given take the experiment's value (Table 5.4).
+# Uncertain inputs that the operator does not choose: configs/disturbances.yaml.
 
 decision_variables:
   t_feed:          {bounds: [40, 150], units: s,
                     why: "below ~40 s the 10-s pressure law (beta_P = 0.102 s-1) and the ED/EP steps dominate the cycle; at 125 s the step-4 baseline scan is already at 2000-17000 ppm (f_AC 0.2-1.0) for the experiment's feed flow; 150 s keeps the infeasible side sampled"}
+  t_blow:          {bounds: [60, 200], units: s,
+                    why: "Table 5.10 spans 70-200 s; with beta_P = 0.102 s-1 the pressure is within 2 % of P_low after ~40 s, so 60 s still completes the blowdown and the upper end trades productivity (cycle time) for nothing; experiment 201 s"}
   purge_to_feed:   {bounds: [0.02, 0.30], units: "mol H2 purge / mol H2 fed per cycle",
-                    why: "below ~2 % the bed is not regenerated (impurities accumulate); above ~30 % the purge alone costs more recovery than any competitive PSA loses"}
+                    why: "below ~2 % the bed is not regenerated (impurities accumulate); above ~30 % the purge alone costs more recovery than any competitive PSA loses; experiment 0.065 (fitted purge flow, step 3)"}
   P_high:          {bounds: [4.0, 8.5], units: bar,
                     why: "H2 partial pressure 0.79 P_high stays inside the 0-7 bar isotherm fits (Tables 2.7, 2.8); Table 5.10 spans 5-10 bar"}
   P_low:           {bounds: [0.3, 1.5], units: bar,
                     why: "vacuum pump on the blowdown line (Fig. 5.5; experiment 0.5 bar); 0.3 bar assumed pump limit, 1.5 bar = no vacuum"}
-  f_zeolite:       {bounds: [0.0, 1.0], units: "-", grid: "multiples of 1/N (N = 30): the AC | ZEO interface must lie on a cell face",
-                    why: "from AC only to zeolite only; the interior optimum is gate-4 trend c"}
+  f_zeolite:       {bounds: [0.0, 1.0], units: "-", grid: 30,
+                    why: "from AC only to zeolite only; the interior optimum is gate-4 trend c. Values are multiples of 1/30 (N = 30 cells): the AC | ZEO interface must lie on a cell face"}
   n_equalisations: {values: [1, 2, 3], units: "-",
                     why: "cycles A (1) and B (3) of Lopes; 2 as in Yang (2008)"}
   feed_flow:       {bounds: [0.5, 1.5], units: "x 5.0e-5 m3/s at 298 K, 1 bar (Table 5.4)",
                     why: "assumed mass-flow-controller range around the experiment's set point; trend d (velocity)"}
 
+derived:
+  P_inter: "n equalisation pressures equally spaced: P_k = P_high - k (P_high - P_low) / (n + 1), k = 1..n (reproduces cycles A and B, Table 5.4 and Table 5.10)"
+  purge_flow: "purge_to_feed x (H2 fed per cycle) / t_purge, pure H2 at z = L"
+
 fixed_by_apparatus:
   column: {L: 0.267 m, d_wi: 0.05 m, wall: "stainless steel, 3 mm (assumed)", source: "Table 5.3"}
   pressure_law: {beta_P: 0.102 s-1, source: "fitted to the author's simulation (Fig. 5.20a); valve characteristic"}
-  feed: {composition: "0.79 H2 / 0.17 CO2 / 0.021 CH4 / 0.012 CO / 0.007 N2", T: 303 K, source: "Table 5.4"}
+  feed: {composition: "nominal: Lopes feed 0.79 H2 / 0.17 CO2 / 0.021 CH4 / 0.012 CO / 0.007 N2 (Table 5.4); variability in configs/disturbances.yaml", T: 303 K}
   heater: {T_ambient: 303 K, source: "Fig. 5.6; = feed temperature"}
-  step_times_not_varied: {t_eq: 16 s, t_press: 21 s, t_blow: "201 s (or set by the cycle time)", note: "candidates to free later"}
+  step_times_not_varied: {t_eq: 16 s, t_press: 21 s, t_purge: 40 s, source: "Table 5.4"}
 
 objectives:
   - {name: h2_recovery, sense: maximise, definition: "eq. (5.49): (H2 product - H2 in purge and pressurisation) / H2 fed"}
@@ -33,6 +41,13 @@ objectives:
 
 constraints:
   - {name: h2_purity, definition: "eq. (5.48), feed components only", limit: ">= 99.99 % (impurities <= 100 ppm)",
-     note: "step 7 replaces the point constraint by a conformal-prediction bound"}
+     note: "step 6 replaces the point constraint by a conformal-prediction bound (docs/preregistration.md)"}
+
+css:
+  max_cycles: 2000
+  tol: 1.0e-4         # step-3 criterion: ppm, recovery, bed-averaged loadings over 10 plain cycles
+  tol_ppm: 1.0e-5     # impurity change over the same cycles (step 4, acceleration check)
+  censoring: {min_cycles: 100, limit_ppm: 1000, window: 30,
+              rule: "stop when after >= min_cycles cycles the impurity exceeds limit_ppm (10x the 100-ppm specification) and has increased over the last `window` cycles; label 'censored: impurity > X ppm', X the last value (src/h2psa/cycle.py censored; verified on the step-4 cases, docs/validation/step5.md)"}
 
 scenarios_carried_to_step7: [ep_inflow_ed_gas, noncompetitive_h2, kinetics_table4.10, thermal_range_ends]   # Dax eq. 5.20 rejected (step 4)

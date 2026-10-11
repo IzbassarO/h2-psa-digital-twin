@@ -16,7 +16,7 @@ An isotherm is any object with `.names`, `.equilibrium(P_bar (n, k), T (n,)) -> 
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
@@ -540,10 +540,12 @@ def hy2seps_transport(kind: str, y: dict, T: float, P: float, u0: float, d_wi: f
                         eps=ph["bed_porosity_ch3"], d_wi=d_wi, e_wall=e_wall, L=L, tau=ph["tortuosity"], dax=dax)
 
 
-def hy2seps_layer(kind: str, length: float, tr: dict) -> Layer:
+def hy2seps_layer(kind: str, length: float, tr: dict, phi: float = 1.0) -> Layer:
     """HY2SEPS-AC ("AC") or HY2SEPS-ZEO ("ZEO") layer: multisite Langmuir (Tables 2.7, 2.8), micropore/crystal
     kinetics refitted to the measured Dc/rc2 (Tables 3.12, 3.15; errata E5 convention), particle properties
-    (Tables 3.10, 3.13), transport coefficients `tr` (Dax, lambda, kf, hf, hw, U, Dp per species)."""
+    (Tables 3.10, 3.13), transport coefficients `tr` (Dax, lambda, kf, hf, hw, U, Dp per species).
+    phi: adsorbent capacity factor (step-5 disturbance, ageing / contamination) multiplying q_max of every species;
+    K and the number of sites a are kept, so the multisite-Langmuir loadings scale exactly by phi."""
     from .isotherms import MultisiteLangmuir
     d = load_yaml(PARAMS / HY2SEPS[kind])
     ph = d["physical"]
@@ -551,7 +553,10 @@ def hy2seps_layer(kind: str, length: float, tr: dict) -> Layer:
     mic = {s: arrhenius_fit(v["Dc_over_rc2"]) for s, v in kin.items() if s != "units"}
     asm = load_yaml(PARAMS / "compact_column_lopes2010.yaml")["assumed"]
     Rp = ph["pellet_diameter"] / 2
-    return Layer(length=length, eps=ph["bed_porosity_ch3"], iso=MultisiteLangmuir.from_yaml(PARAMS / HY2SEPS[kind]),
+    iso = MultisiteLangmuir.from_yaml(PARAMS / HY2SEPS[kind])
+    if phi != 1.0:
+        iso = MultisiteLangmuir({k: replace(v, q_max=phi * v.q_max) for k, v in iso.species.items()})
+    return Layer(length=length, eps=ph["bed_porosity_ch3"], iso=iso,
                  rho_p=ph["particle_density"], eps_p=ph["pellet_porosity"], Rp=Rp,
                  Omega_m=ph["ldf_factor_macropore"], Omega_c=ph["ldf_factor_micropore"],
                  Cps=ph["solid_heat_capacity"]["value"], a_p=asm["particle_specific_area"]["value"] / Rp,
@@ -561,11 +566,12 @@ def hy2seps_layer(kind: str, length: float, tr: dict) -> Layer:
 
 def layered_column(f_ac: float, y: dict, T: float, P: float, flow: float, species: list, *, L: float, d_wi: float,
                    e_wall: float, Cw: float, T_amb: float, dax: str = "eq3.18", transport: dict | None = None,
-                   wall: tuple | None = None) -> Column:
+                   wall: tuple | None = None, phi: float = 1.0) -> Column:
     """HY2SEPS-AC (feed end, fraction f_ac of the bed length L) + HY2SEPS-ZEO (product end). Transport
     coefficients per layer from the correlations at the feed conditions, unless `transport` gives
     {"AC": tr, "ZEO": tr} explicitly. wall: (h_w, U) [W m-2 K-1] of the geometry's own source for every layer
-    (step-4 rule; None: the correlations 5.31 and 5.29). Zero-length layers are dropped."""
+    (step-4 rule; None: the correlations 5.31 and 5.29). phi: capacity factor of both layers (hy2seps_layer).
+    Zero-length layers are dropped."""
     u0 = flow * R * T / (P * np.pi * d_wi**2 / 4)
     layers = []
     for kind, length in (("AC", f_ac * L), ("ZEO", (1 - f_ac) * L)):
@@ -574,6 +580,6 @@ def layered_column(f_ac: float, y: dict, T: float, P: float, flow: float, specie
         tr = (transport or {}).get(kind) or hy2seps_transport(kind, y, T, P, u0, d_wi, e_wall, L, species, dax)
         if wall is not None:
             tr = {**tr, "hw": wall[0], "U": wall[1]}
-        layers.append(hy2seps_layer(kind, length, tr))
+        layers.append(hy2seps_layer(kind, length, tr, phi))
     l0 = layers[0]
     return Column(d_wi=d_wi, e_wall=e_wall, Cw=Cw, Dax=l0.Dax, lam=l0.lam, hw=l0.hw, U=l0.U, T_amb=T_amb, layers=layers)
