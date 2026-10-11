@@ -83,7 +83,10 @@ matching data.
 | HY2SEPS macropore Dp | eq. 5.17 at operating conditions, tau = 2, no Knudsen term | The values quoted on pp.97/103 (e.g. H2 7.21e-5 m2/s) are molecular diffusion in He at 1 bar and 303 K divided by tau = 2 (Chapman-Enskog reproduces them within 3-14 %; p.96: Knudsen neglected, tau = 2). Used literally at 5-10 bar they would be 5-10x too large, so they serve as the check of eq. 5.17, not as model inputs |
 | gas thermal conductivity | modified Eucken per species + Bird eq. 9.3-17 mixture rule | ASSUMED: p.171 cites Bird et al. (2002) without the formula |
 | scalar Dax and kf of a multicomponent feed | mole-fraction mean of the species' mixture diffusivities (eq. 5.18) | ASSUMED: one Dax and one kf per layer; the thesis does not say which diffusivity enters eqs 5.20/5.23 |
-| U (eq. 5.29) | Churchill-Chu with T_w - T_inf = 10 K, air at 300 K, AISI 304 wall (14.9 W/m/K) | ASSUMED inputs (not reported) |
+| axial dispersion, all layers and geometries | eq. 3.18 (Table 4.7) | DECIDED (project lead, step 4): eq. 5.20 rejected, see below |
+| h_w, U, compact Lopes column (every layer) | Table 5.9: h_w = 55, U = 50 W/m2/K | DECIDED (project lead, step 4): wall heat transfer is a property of the apparatus; the same values as the step-3 baseline |
+| h_w, U, Yang (2008) column | h_w = 38.5 (their internal coefficient); U = 12.2 W/m2/K from eq. 5.29 with their external 14.2 W/m2/K and the wall of Table 2 (5.1 mm, AISI 304 conductivity 14.9 W/m/K, ASSUMED) | DECIDED (project lead, step 4): each geometry takes wall heat transfer from its own source. In our model U is the overall wall-ambient coefficient of eq. 5.29, so Yang's two film coefficients are combined through it |
+| U by correlation (eq. 5.29, first step-4 run only) | Churchill-Chu with T_w - T_inf = 10 K, air at 300 K, AISI 304 wall (14.9 W/m/K) | ASSUMED inputs (not reported); superseded by the two rows above |
 | Yang (2008) emulation | single column, cycle time 200 s (feed 50, ED 10, blow 25, purge 50, press 35 s), P_low 1 bar, 303 K, purge H2 = 10 % of feed H2 | ASSUMED (`layered_4bed_yang2008.yaml: assumed_step4`); trend check e is order-of-magnitude |
 
 **Correlations vs the author's tables (gate 3 of step 4).** Recomputed for the compact-unit AC5-KS runs (Tables 5.7,
@@ -91,8 +94,17 @@ matching data.
 Wakao-Funazkri axial dispersion stated for the PSA model (eq. 5.20) gives 51-55x the tabulated Dax; the ch.3
 correlation (eq. 3.18) gives 1.15-1.24x. The tabulated h_w = 55 and U = 50 W/m2/K are the same in every run and
 group and are not reproduced by eqs 5.31 (1.8-7.8x) and 5.29 (0.06-0.07x): they look like set values. Per the
-pre-declared rule the correlations (eq. 5.20, 5.31, 5.29) are used for the HY2SEPS layers anyway; Dax from eq. 3.18
-is the reported sensitivity.
+pre-declared rule the correlations (eq. 5.20, 5.31, 5.29) were used for the HY2SEPS layers in the first step-4 run
+(commit b23e20a), with Dax from eq. 3.18 as the sensitivity.
+
+**Decision (project lead, step 4): eq. 5.20 is rejected, eq. 3.18 is the axial dispersion for every layer and
+geometry.** Evidence: (i) eq. 3.18 is the thesis's own correlation (Table 4.7, p.123; eq. 3.18) and reproduces the
+Dax of Tables 5.7/5.9 within 1.15-1.24x, whereas eq. 5.20 gives 51-55x; (ii) step 2 used the tabulated Dax and
+matched the MEASURED breakthrough curves (breakthrough times 15/18 within 10 %), so the measured data support the
+eq. 3.18 magnitude and contradict a 51-55x larger dispersion; (iii) eq. 5.20 (the Wakao-Funazkri form,
+eps Dax / Dm = 20 + 0.5 Sc Re) is stated on p.172 for 3 < Re < 10000 and would be applied here at Re 1-2, below and
+at the edge of its validity. Eq. 5.20 is not carried as a scenario. Wall heat transfer: see the two DECIDED rows
+above. Note for step 5: industrial-scale columns are close to adiabatic.
 
 ### Simulated vs measured values in Lopes (2010), chapter 5
 
