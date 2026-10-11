@@ -1,10 +1,12 @@
 # DRAFT (step 4) — design space for the step-6 surrogate / optimisation. Not used by any script yet.
 # Process: single-column layered-bed PSA emulation of the compact LSRE unit (Lopes 2010, ch.5), cycle with
-# Feed, ED1..n, Blow, Purge (H2), EPn..1, Press (H2); frozen step-3 baseline model (see docs/validation/step3.md).
+# Feed, ED1..n, Blow, Purge (H2), EPn..1, Press (H2); frozen step-3 baseline model (see docs/validation/step3.md)
+# with the step-4 layered baseline: HY2SEPS-AC | HY2SEPS-ZEO, Dax eq. 3.18, h_w = 55 and U = 50 W/m2/K (Table 5.9),
+# CSS by warm start + Anderson acceleration (docs/validation/step4.md).
 
 decision_variables:
   t_feed:          {bounds: [40, 150], units: s,
-                    why: "below ~40 s the 10-s pressure law (beta_P = 0.102 s-1) and the ED/EP steps dominate the cycle; at 125 s the step-4 scan is already at 400-1900 ppm (eq. 3.18) for the experiment's feed flow"}
+                    why: "below ~40 s the 10-s pressure law (beta_P = 0.102 s-1) and the ED/EP steps dominate the cycle; at 125 s the step-4 baseline scan is already at 2000-17000 ppm (f_AC 0.2-1.0) for the experiment's feed flow; 150 s keeps the infeasible side sampled"}
   purge_to_feed:   {bounds: [0.02, 0.30], units: "mol H2 purge / mol H2 fed per cycle",
                     why: "below ~2 % the bed is not regenerated (impurities accumulate); above ~30 % the purge alone costs more recovery than any competitive PSA loses"}
   P_high:          {bounds: [4.0, 8.5], units: bar,
@@ -33,4 +35,4 @@ constraints:
   - {name: h2_purity, definition: "eq. (5.48), feed components only", limit: ">= 99.99 % (impurities <= 100 ppm)",
      note: "step 7 replaces the point constraint by a conformal-prediction bound"}
 
-scenarios_carried_to_step7: [ep_inflow_ed_gas, noncompetitive_h2, kinetics_table4.10, thermal_range_ends, dax_correlation]
+scenarios_carried_to_step7: [ep_inflow_ed_gas, noncompetitive_h2, kinetics_table4.10, thermal_range_ends]   # Dax eq. 5.20 rejected (step 4)
