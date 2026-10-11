@@ -530,7 +530,7 @@ HY2SEPS = {"AC": "hy2seps_ac_lopes2010.yaml", "ZEO": "hy2seps_zeo_lopes2010.yaml
 
 
 def hy2seps_transport(kind: str, y: dict, T: float, P: float, u0: float, d_wi: float, e_wall: float, L: float,
-                      species: list, dax: str = "eq5.20") -> dict:
+                      species: list, dax: str = "eq3.18") -> dict:
     """Transport coefficients of a HY2SEPS layer from the thesis correlations (eqs 5.17-5.35) at inlet
     conditions (feed composition y, T [K], P [Pa], superficial velocity u0 [m/s])."""
     from .transport import Gas, coefficients
@@ -560,16 +560,20 @@ def hy2seps_layer(kind: str, length: float, tr: dict) -> Layer:
 
 
 def layered_column(f_ac: float, y: dict, T: float, P: float, flow: float, species: list, *, L: float, d_wi: float,
-                   e_wall: float, Cw: float, T_amb: float, dax: str = "eq5.20", transport: dict | None = None) -> Column:
+                   e_wall: float, Cw: float, T_amb: float, dax: str = "eq3.18", transport: dict | None = None,
+                   wall: tuple | None = None) -> Column:
     """HY2SEPS-AC (feed end, fraction f_ac of the bed length L) + HY2SEPS-ZEO (product end). Transport
     coefficients per layer from the correlations at the feed conditions, unless `transport` gives
-    {"AC": tr, "ZEO": tr} explicitly. Zero-length layers are dropped."""
+    {"AC": tr, "ZEO": tr} explicitly. wall: (h_w, U) [W m-2 K-1] of the geometry's own source for every layer
+    (step-4 rule; None: the correlations 5.31 and 5.29). Zero-length layers are dropped."""
     u0 = flow * R * T / (P * np.pi * d_wi**2 / 4)
     layers = []
     for kind, length in (("AC", f_ac * L), ("ZEO", (1 - f_ac) * L)):
         if length <= 1e-12:
             continue
         tr = (transport or {}).get(kind) or hy2seps_transport(kind, y, T, P, u0, d_wi, e_wall, L, species, dax)
+        if wall is not None:
+            tr = {**tr, "hw": wall[0], "U": wall[1]}
         layers.append(hy2seps_layer(kind, length, tr))
     l0 = layers[0]
     return Column(d_wi=d_wi, e_wall=e_wall, Cw=Cw, Dax=l0.Dax, lam=l0.lam, hw=l0.hw, U=l0.U, T_amb=T_amb, layers=layers)

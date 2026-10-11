@@ -96,13 +96,21 @@ def dax_eq318(Dm, eps, Rp, u0):
     return (0.45 + 0.55 * eps) * Dm + 0.35 * Rp * u0 / eps
 
 
-def coefficients(gas: Gas, y, T, P, u0, *, dp, eps, d_wi, e_wall, L, tau, r_pore=None, dax="eq5.20"):
+def overall_U(hw, h_ex, d_wi, e_wall, k_wall):
+    """Global wall coefficient, eqs (5.29)-(5.30), from the inside film h_w, the outside film h_ex and the wall."""
+    d_we = d_wi + 2 * e_wall
+    d_ln = (d_we - d_wi) / np.log(d_we / d_wi)                           # (5.30)
+    return 1.0 / (1 / hw + e_wall * d_wi / (k_wall * d_ln) + d_wi / (d_we * h_ex))   # (5.29)
+
+
+def coefficients(gas: Gas, y, T, P, u0, *, dp, eps, d_wi, e_wall, L, tau, r_pore=None, dax="eq3.18"):
     """Transport coefficients of Table 5.7 / 5.9 at inlet conditions.
 
     y: mole fractions (gas.sp order), u0: superficial velocity, dp: particle diameter, eps: bed porosity,
     d_wi, e_wall, L: column internal diameter, wall thickness, length. The scalar coefficients use the
-    mole-fraction mean of the species' mixture diffusivities (one Dax and one kf per bed). dax: "eq5.20"
-    (Wakao-Funazkri, the correlation stated for the PSA model) or "eq3.18" (ch.3).
+    mole-fraction mean of the species' mixture diffusivities (one Dax and one kf per bed). dax: "eq3.18"
+    (ch.3, the baseline: reproduces Tables 5.7/5.9) or "eq5.20" (Wakao-Funazkri, stated for the PSA model
+    on p.172; rejected in step 4, 51-55x the tabulated Dax; kept for the gate-3 comparison only).
     Returns dict with Dax, lambda, kf, hf, hw, U, Dp {species} and the dimensionless groups.
     """
     ext = load_yaml(PARAMS / "gas_transport_lopes2010.yaml")["external"]
@@ -127,9 +135,7 @@ def coefficients(gas: Gas, y, T, P, u0, *, dp, eps, d_wi, e_wall, L, tau, r_pore
     Gr = ext["gravity"] * beta * dT * L**3 / (air["nu"] * air["alpha"])  # (5.34)
     Ra = Gr * air["Pr"]                                                  # (5.33)
     hex_ = air["k"] / L * (0.68 + 0.67 * Ra**0.25 / (1 + (0.492 / air["Pr"]) ** (9 / 16)) ** (4 / 9))
-    d_we = d_wi + 2 * e_wall
-    d_ln = (d_we - d_wi) / np.log(d_we / d_wi)                           # (5.30)
-    U = 1.0 / (1 / hw + e_wall * d_wi / (ext["wall_conductivity"]["value"] * d_ln) + d_wi / (d_we * hex_))  # (5.29)
+    U = overall_U(hw, hex_, d_wi, e_wall, ext["wall_conductivity"]["value"])
     Dp = pore_diffusivity(Dmi, tau, T, gas.M, r_pore)
     return dict(Dax=Dax, **{"lambda": lam}, kf=kf, hf=hf, hw=hw, U=U, Dp=dict(zip(gas.sp, Dp)),
                 Re=Re, Sc=Sc, Pr=Pr, kg=kg, mu=mu, rho=rho, Dm=Dm, h_ex=hex_)
