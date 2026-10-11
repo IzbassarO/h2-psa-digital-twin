@@ -137,3 +137,59 @@ def test_solve_retries_with_other_rtol():
     m.solve = flaky
     run._solve(1.0, 2, m.y0)
     assert seen == [run.rtol, 0.1 * run.rtol] and run.retries == 1
+
+
+def test_anderson_linear_map():
+    """A linear contraction with one slow mode (rate 0.999): Anderson (memory 5) reaches the fixed point to 1e-10
+    in < 200 iterations, where plain iteration would need about 24000."""
+    from h2psa.cycle import Anderson
+    rng = np.random.default_rng(0)
+    Q = np.linalg.qr(rng.normal(size=(20, 20)))[0]
+    A = Q @ np.diag(np.r_[0.999, np.linspace(0.1, 0.9, 19)]) @ Q.T
+    b = rng.normal(size=20)
+    x_star = np.linalg.solve(np.eye(20) - A, b)
+    aa, x = Anderson(np.ones(20), memory=5), np.zeros(20)
+    for k in range(200):
+        x, r = aa.step(x, A @ x + b)
+        if r < 1e-10:
+            break
+    assert r < 1e-10 and np.allclose(x, x_star, atol=1e-8)
+
+
+def test_anderson_clips_and_restarts():
+    from h2psa.cycle import Anderson
+    aa = Anderson(np.ones(2), memory=3, nonneg=np.array([True, False]))
+    aa.step(np.array([1.0, 1.0]), np.array([0.5, 0.5]))             # G(x) = 0.6 x - 0.1: fixed point -0.25
+    x, _ = aa.step(np.array([0.5, 0.5]), np.array([0.2, 0.2]))
+    assert x[0] == 0.0 and np.isclose(x[1], -0.25)
+    aa.step(x, x + 100.0)                                             # residual grows > 2x the best: memory dropped
+    assert len(aa.dF) == 0
+
+
+def test_anderson_stalls_at_noise_floor():
+    """A contraction evaluated with noise (as a cycle map integrated to a finite tolerance) cannot be resolved
+    below the noise: the residual stops halving and `stalled` is set; reset() clears it."""
+    from h2psa.cycle import Anderson
+    rng = np.random.default_rng(0)
+    aa = Anderson(np.ones(10), memory=5, stall=20)
+    x = np.ones(10)
+    for _ in range(200):
+        x, r = aa.step(x, 0.5 * x + 1e-4 * rng.standard_normal(10))
+        if aa.stalled:
+            break
+    assert aa.stalled and r < 1e-2
+    aa.reset()
+    assert not aa.stalled and aa.active
+
+
+def test_accelerated_css_matches_plain():
+    """Same CSS with and without acceleration (coarse grid, loose criterion to keep the test short); CSS is only
+    declared after >= 10 plain cycles."""
+    c = experiment_cycle()
+    plain = CycleRunner(psa_model(c, N=8), c).run_to_css(tol=1e-4)
+    acc = CycleRunner(psa_model(c, N=8), c).run_to_css(tol=1e-4, accel=True)
+    assert plain["css"] and acc["css"] and acc["accelerated_cycles"] > 0
+    assert all(h["plain"] for h in acc["history"][-11:])
+    assert abs(acc["perf"]["recovery_pct"] - plain["perf"]["recovery_pct"]) < 0.05
+    assert abs(acc["perf"]["ppm"] / plain["perf"]["ppm"] - 1) < 5e-3
+    assert acc["cycles"] < plain["cycles"]

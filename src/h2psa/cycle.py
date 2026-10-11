@@ -271,43 +271,123 @@ class CycleRunner:
 
     # -------------------------------------------------------------- to CSS
     def run_to_css(self, y0=None, max_cycles: int = 2000, tol: float = 1e-4, window: int = 10,
-                   record=(), log=None, profiles=()):
+                   record=(), log=None, profiles=(), accel: bool = False, memory: int = 5, tol_acc: float = 1e-6,
+                   stall: int = 20, tol_ppm: float | None = None):
         """Cycle until every CSS quantity (impurity ppm, recovery, bed-averaged loadings) changed by less than
         `tol` (relative) over the last `window` cycles and the cycle mole balance closes within 0.1 %.
         record: cycle numbers whose time series are kept (the last cycle is always kept).
-        profiles: cycle numbers whose end-of-step axial profiles are kept (the last cycle is always kept)."""
+        profiles: cycle numbers whose end-of-step axial profiles are kept (the last cycle is always kept).
+        y0: start state (a CSS state of a neighbouring design: warm start); its pressure row must be referred to
+        P_high (as every cycle-end state is).
+        tol_ppm: if given, impurity ppm must in addition change by less than `tol_ppm` (relative) over the window
+        (a tighter condition on the quantity the purity constraint is evaluated on).
+        accel: Anderson acceleration of the cycle map (`Anderson`) until its scaled residual is below `tol_acc`
+        or has not halved in `stall` accelerated cycles (stagnation at the integration-noise floor, or a stalled
+        nonlinear transition); then plain cycles. CSS is only declared by the criterion above over >= `window` consecutive plain cycles
+        (a plain cycle starts from the unmodified end state of the previous one); if 3 x window plain cycles do
+        not reach it, acceleration resumes with a fresh memory."""
         y = self.m.y0.copy() if y0 is None else y0.copy()
-        if y0 is None:
-            self.ref = (self.feed_bc[1].P, 0.0)
+        self.ref = (self.feed_bc[1].P, 0.0)
         hist, traces, profs = [], {}, {}
         keys = None
         t0, c0 = time.perf_counter(), time.process_time()
         n = 0
         css = False
+        nv = self.m.nv - 2 * self.m.ns                    # cumulative mole counters are not part of the state
+        aa = Anderson(self.m.yscale[:nv], memory, self._nonneg(), stall=stall) if accel else None
+        plain, n_plain, n_acc = False, 0, 0               # plain: this cycle starts from the previous end state
         while n < max_cycles:
             n += 1
             res = self.run_cycle(y, trace=n in record, profiles=n in profiles)
-            y = res.y_end
             if res.profiles:
                 profs[n] = res.profiles
-            hist.append({"cycle": n, **res.perf})
+            n_plain = n_plain + 1 if plain else 0
+            hist.append({"cycle": n, "plain": plain, **res.perf})
             if res.trace is not None:
                 traces[n] = res.trace
             keys = keys or ["ppm", "recovery_pct"] + [k for k in res.perf if k.startswith("q_")]
+            rel = np.nan
             if n > window:
                 old = hist[-1 - window]
                 rel = max(abs(res.perf[k] - old[k]) / max(abs(res.perf[k]), 1e-300) for k in keys)
                 hist[-1]["css_change"] = rel
-                if log and n % 10 == 0:
-                    log(f"cycle {n}: ppm {res.perf['ppm']:.2f} rec {res.perf['recovery_pct']:.3f} "
-                        f"change {rel:.1e} closure {res.perf['closure']:.1e} ({time.perf_counter() - t0:.0f} s)")
-                if rel < tol and all(abs(h["closure"]) < 1e-3 for h in hist[-window:]):
+                ppm_ok = tol_ppm is None or abs(res.perf["ppm"] - old["ppm"]) < tol_ppm * abs(res.perf["ppm"])
+                if (n_plain >= window or aa is None) and rel < tol and ppm_ok \
+                        and all(abs(h["closure"]) < 1e-3 for h in hist[-window:]):
+                    y = res.y_end
                     css = True
                     break
+            if aa is not None and aa.active:
+                y_next, r = aa.step(y[:nv], res.y_end[:nv])
+                hist[-1]["residual"] = r
+                if r < tol_acc or aa.stalled:
+                    aa.active, plain, y = False, True, res.y_end
+                else:
+                    n_acc += 1
+                    plain, y = False, np.concatenate([y_next, res.y_end[nv:]])
+            else:
+                plain, y = True, res.y_end
+                if aa is not None and n_plain >= 3 * window:
+                    aa.reset()
+            if log and n % 10 == 0:
+                log(f"cycle {n}: ppm {res.perf['ppm']:.2f} rec {res.perf['recovery_pct']:.3f} change {rel:.1e} "
+                    f"closure {res.perf['closure']:.1e}{' acc' if aa is not None and aa.active else ''} "
+                    f"({time.perf_counter() - t0:.0f} s)")
         last = self.run_cycle(y, trace=True, profiles=True)   # one more cycle for the time series and profiles
-        hist.append({"cycle": n + 1, **last.perf})
+        hist.append({"cycle": n + 1, "plain": True, **last.perf})
         traces[n + 1] = last.trace
         profs[n + 1] = last.profiles
-        return dict(history=hist, css=css, cycles=n, y_end=last.y_end, traces=traces, perf=last.perf,
-                    profiles=profs, step_moles=last.steps, retries=self.retries,
+        return dict(history=hist, css=css, cycles=n, accelerated_cycles=n_acc, y_end=last.y_end, traces=traces,
+                    perf=last.perf, profiles=profs, step_moles=last.steps, retries=self.retries,
                     runtime_s=time.perf_counter() - t0, cpu_s=time.process_time() - c0)
+
+    def _nonneg(self):
+        """Mask of the state entries that must stay >= 0 (gas and macropore concentrations, loadings)."""
+        N, ns = self.m.N, self.m.ns
+        mask = np.zeros(self.m.nv - 2 * ns, bool)
+        mask[:(ns - 1) * N] = True                        # C_i in G (the last row of G is the pressure deviation)
+        mask[ns * N:3 * ns * N] = True                    # Cm, q
+        return mask
+
+
+class Anderson:
+    """Anderson acceleration (type II, Walker & Ni 2011) of a fixed point x = G(x), in variables scaled by
+    `scale`, with `memory` previous differences. Safeguards: the memory restarts when the residual grows by more
+    than `grow` over the best one since the last restart; iterates are clipped at zero where `nonneg`; the
+    least-squares problem is solved by lstsq with a relative cut-off of 1e-10 on the singular values.
+    `stalled` is set when the residual has not halved in `stall` steps since the last reset."""
+
+    def __init__(self, scale, memory=5, nonneg=None, grow=2.0, stall=20):
+        self.s, self.m, self.nonneg, self.grow, self.stall = scale, memory, nonneg, grow, stall
+        self.active = True
+        self.reset()
+
+    def reset(self):
+        self.dF, self.dG, self.f, self.g, self.best = [], [], None, None, np.inf
+        self.active, self.mark, self.since = True, np.inf, 0
+
+    def step(self, x, gx):
+        """x: last iterate, gx = G(x). Returns (next iterate, max-norm of the scaled residual G(x) - x)."""
+        u, gu = x / self.s, gx / self.s
+        f = gu - u
+        r = float(np.abs(f).max())
+        self.mark, self.since = (r, 0) if r < 0.5 * self.mark else (self.mark, self.since + 1)
+        if r > self.grow * self.best:                     # diverging: drop the memory, take the plain step
+            self.dF, self.dG, self.f, self.g, self.best = [], [], None, None, np.inf
+        if self.f is not None:
+            self.dF.append(f - self.f)
+            self.dG.append(gu - self.g)
+            self.dF, self.dG = self.dF[-self.m:], self.dG[-self.m:]
+        self.f, self.g, self.best = f, gu, min(self.best, r)
+        if not self.dF:
+            return gx.copy(), r
+        F, Gm = np.array(self.dF).T, np.array(self.dG).T
+        gamma = np.linalg.lstsq(F, f, rcond=1e-10)[0]
+        x_new = (gu - Gm @ gamma) * self.s
+        if self.nonneg is not None:
+            x_new[self.nonneg] = np.maximum(x_new[self.nonneg], 0.0)
+        return x_new, r
+
+    @property
+    def stalled(self):
+        return self.since >= self.stall
