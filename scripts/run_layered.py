@@ -586,7 +586,10 @@ FINAL_DECISIONS = """## Final decisions (project lead, 2026-10-10)
    the paper:** the single-column emulation gives absolute recoveries below industrial (multi-bed) values.
 5. Step 4 rerun with the new baseline (eq. 3.18, wall values per item 2, accelerated CSS); all pre-declared gates
    re-evaluated below. The first step-4 run (eq. 5.20 / eq. 3.18 with correlation walls, brute-force CSS) is in
-   commit b23e20a; its eq. 3.18 cases are the brute-force references of the acceleration check."""
+   commit b23e20a; its eq. 3.18 cases are the brute-force references of the acceleration check.
+6. **Step 4 closed (project lead, 2026-10-11):** gates 1-2 pass, gate 3 settled by decisions 1-2, trends b and e
+   recorded as not reproduced (decision 4). The CSS wall time of p90 13.8 min (above the 10-min target) is accepted:
+   parallel runs absorb it (step-5 compute plan)."""
 
 TIGHT_TEXT = """Before the ppm condition (CSS by the step-3 criterion alone, `results/step4/accel_check_tol4/`), the
 slowest cases stopped up to 2.5e-3 short of the reference, because their final plain cycles drift by less than 1e-4
