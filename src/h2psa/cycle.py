@@ -272,7 +272,8 @@ class CycleRunner:
     # -------------------------------------------------------------- to CSS
     def run_to_css(self, y0=None, max_cycles: int = 2000, tol: float = 1e-4, window: int = 10,
                    record=(), log=None, profiles=(), accel: bool = False, memory: int = 5, tol_acc: float = 1e-6,
-                   stall: int = 20, tol_ppm: float | None = None, censor: tuple | None = None, checkpoint=None):
+                   stall: int = 20, tol_ppm: float | None = None, censor: tuple | None = None, checkpoint=None,
+                   censor_history: list | None = None):
         """Cycle until every CSS quantity (impurity ppm, recovery, bed-averaged loadings) changed by less than
         `tol` (relative) over the last `window` cycles and the cycle mole balance closes within 0.1 %.
         record: cycle numbers whose time series are kept (the last cycle is always kept).
@@ -288,7 +289,9 @@ class CycleRunner:
         not reach it, acceleration resumes with a fresh memory.
         censor: (min_cycles, ppm_limit, window): stop a clearly infeasible point early (see `censored`); the result
         then has css False and censored = the last impurity [ppm].
-        checkpoint: called as checkpoint(n, y) after cycle n with the start state of the next cycle (resume)."""
+        checkpoint: called as checkpoint(n, y) after cycle n with the start state of the next cycle (resume).
+        censor_history: optional mutable ppm history retained across checkpoints. It is used only for the
+        frozen censoring rule, so its minimum cycle count and comparison window survive a resume."""
         y = self.m.y0.copy() if y0 is None else y0.copy()
         self.ref = (self.feed_bc[1].P, 0.0)
         hist, traces, profs = [], {}, {}
@@ -307,6 +310,8 @@ class CycleRunner:
                 profs[n] = res.profiles
             n_plain = n_plain + 1 if plain else 0
             hist.append({"cycle": n, "plain": plain, **res.perf})
+            if censor_history is not None:
+                censor_history.append(res.perf["ppm"])
             if res.trace is not None:
                 traces[n] = res.trace
             keys = keys or ["ppm", "recovery_pct"] + [k for k in res.perf if k.startswith("q_")]
@@ -321,7 +326,8 @@ class CycleRunner:
                     y = res.y_end
                     css = True
                     break
-            if censor and censored([h["ppm"] for h in hist], *censor):
+            if censor and censored(censor_history if censor_history is not None else [h["ppm"] for h in hist],
+                                   *censor):
                 y, cens = res.y_end, res.perf["ppm"]
                 break
             if aa is not None and aa.active:

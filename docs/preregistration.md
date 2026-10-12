@@ -228,4 +228,25 @@ use `scripts/run_batch.py` under `caffeinate -i` with checkpoint / resume.
 
 ## Deviations
 
-None yet.
+* **2026-10-12 — compute concurrency.** Step 6a uses 6 workers, including the 32-point
+  D_train pilot, instead of 8 because another heavy Python modelling job was active
+  on the same 10-core machine (6 requested threads; observed CPU use above 300 %).
+  This follows the project lead's Step 6a exception; sampling, sizes and numerical
+  criteria are unchanged. The pilot supplies the revised time estimate.
+* **2026-10-12 — generation infrastructure repairs.** Before any Step 6a simulation,
+  the frozen batch runner was extended to persist solver failures, perform the
+  registered once-only He-filled-column retry, pause new submissions at the lead's
+  2 % failure / 5 % cap thresholds, and monitor without displaying response labels.
+  Checkpoints now retain active wall time, attempt/warm-start provenance and the
+  impurity history needed by the registered censoring rule across resumes. A
+  generation-only driver writes unit-cube coordinates and the required per-point
+  CSVs and commits/pushes each completed block. The model, tolerances, CSS/censoring
+  criteria, seeds and mappings remain as registered. No additional solver tightening
+  is specified in prereg-v1; retries retain the frozen settings, including the
+  already tightened impurity CSS tolerance 1e-5. Interrupted work after the last
+  saved checkpoint (every 10 cycles) is not included in per-point wall time.
+* **2026-10-12 — pilot monitoring denominator.** The lead's pause thresholds are
+  also checked against the 32-point pilot execution block before the remaining
+  D_train points are submitted (one primary failure or two cap hits pauses intake).
+  Subsequent checks use each full registered data-set size. This conservative
+  additional check uses only failure/cap counts and changes no analysis decisions.
