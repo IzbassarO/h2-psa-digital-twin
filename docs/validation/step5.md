@@ -92,10 +92,11 @@ scheduling):
 | 500 | 10.1 | 11.2 | 6.1 | 6.4 | 0.3 |
 | 1000 | 19.6 | 20.9 | 12.1 | 12.5 | 0.5 |
 | 2000 | 38.7 | 40.6 | 24.0 | 24.6 | 1.0 |
+| 2292 | 44.2 | 46.2 | 27.5 | 28.1 | 1.1 |
 
 Caveats: the step-6 design space is wider than the step-4 scans (P_high, P_low, t_blow, purge, n_eq vary); the first
 block of runs (D_train) re-estimates the distribution. The censoring saving depends on the infeasible fraction of the
-design. The pre-registered budget (1992 runs) maps to the N = 2000 row.
+design. The pre-registered budget (2292 runs, `docs/preregistration.md` section 9) is the N = 2292 row.
 
 Runner (`scripts/run_batch.py`): finished points are written atomically and never recomputed; a point in progress
 saves its state every 10 cycles and resumes from it after a kill (sleep, reboot); new points warm-start from the

@@ -28,7 +28,8 @@ PHI = OUT / "phi"
 C = load_yaml(CONFIGS / "design_space.yaml")["css"]["censoring"]
 CENSOR = (C["min_cycles"], float(C["limit_ppm"]), C["window"])
 STEP4_OF = {"f1.0_t80": "base_f1.0_t80", "f0.6_t101": "base_f0.6_t101", "f0.4_t60": "base_f0.4_t60"}
-WORKERS, N_RUNS = 8, (500, 1000, 2000)
+WORKERS, BUDGET = 8, 2292                               # BUDGET: pre-registration v1, section 9
+N_RUNS = (500, 1000, 2000, BUDGET)
 
 
 def md(df, fmt=None):
@@ -211,7 +212,7 @@ scheduling):
 
 Caveats: the step-6 design space is wider than the step-4 scans (P_high, P_low, t_blow, purge, n_eq vary); the first
 block of runs (D_train) re-estimates the distribution. The censoring saving depends on the infeasible fraction of the
-design. The pre-registered budget (1992 runs) maps to the N = 2000 row.
+design. The pre-registered budget ({BUDGET} runs, `docs/preregistration.md` section 9) is the N = {BUDGET} row.
 
 Runner (`scripts/run_batch.py`): finished points are written atomically and never recomputed; a point in progress
 saves its state every 10 cycles and resumes from it after a kill (sleep, reboot); new points warm-start from the

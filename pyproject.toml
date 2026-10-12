@@ -18,6 +18,10 @@ dependencies = [
   "scipy>=1.10",
   "pandas>=2.0",
   "pyyaml>=6.0",
+  # analysis (step 6), exact versions frozen with the pre-registration (prereg-v1)
+  "scikit-learn==1.9.1",
+  "pymoo==0.6.2",
+  "statsmodels==0.15.0",
 ]
 
 [project.optional-dependencies]
