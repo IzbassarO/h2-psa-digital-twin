@@ -1,0 +1,73 @@
+{
+  "prereg_tag": "prereg-v1",
+  "prereg_commit": "2ae5978d67bed5d2f7a2287b242235f740bad265",
+  "input_sha256": {
+    "D_train": "d2db4540e06026ea60ad3628e25fd9c3171a9ca8393393fc9a868a3789eb530c",
+    "D_cal": "b6496b58cdb99b4a85a20acb477b551386100a6b50a120d7e83a203cccb8d2d1",
+    "D_test": "e76c4f8fc61d86bbd4a8fdac263d8c323cbe9e8653f2acb067af78af9f66d1d7",
+    "D_shift": "0011be06b7e00c738e9e10bd65dc512112117ccf9f589dd55f7a542a8fff9c4b"
+  },
+  "python": "3.14.7",
+  "libraries": {
+    "numpy": "2.5.3",
+    "scipy": "1.18.1",
+    "pandas": "3.0.6",
+    "scikit-learn": "1.9.1",
+    "pymoo": "0.6.2",
+    "statsmodels": "0.15.0"
+  },
+  "duplicate_counting": "one shared physical simulation; once per arm",
+  "implementation": 1,
+  "model_sha256": {
+    "GBM_n128_productivity.joblib": "bffa030ed315d7bb417c34951d790e63d900152ac6337bc724d0c5d1fa31dbf1",
+    "GBM_n128_recovery.joblib": "f91d1781c06ba0b7ab6a18f3f36cb73c9161d5e06914dece17f27a9f36220c47",
+    "GBM_n128_z.joblib": "1b4775105cf1d25959b13be8ae8352f5ed3e1472ad21981e33472bd8ee65b9c2",
+    "GBM_n128_z_q0.90.joblib": "2fdaf05b12f4ae0c993e9f9979cc095546e8118f660c4ee391857ffa05d00714",
+    "GBM_n128_z_q0.95.joblib": "c52a67df2a92bcdf1cc47e0f67cd7dbe4b89477905b6ef28c4dcaf379377249b",
+    "GBM_n256_productivity.joblib": "b49506b9a716faf81d40920e9f50ba93912e05a406ae348abad6732665f269aa",
+    "GBM_n256_recovery.joblib": "eaa17a1c7daeef1baecdf295e39c4f62c1fdc79ca4a86d7d3271aca53a7fccc2",
+    "GBM_n256_z.joblib": "59cef215767cd32d7a0cc2feee915c6fb7e920b5a9bb16c419feee9c23ff87b8",
+    "GBM_n256_z_q0.90.joblib": "0244314ea4c1253d50a4ba34edca6f011862c2a87b8c51e029b6dce8093126cf",
+    "GBM_n256_z_q0.95.joblib": "ec7fbce0ad356f9d8daaec26dc918d848020a085f82e8e9a486d1f5074375654",
+    "GBM_n512_productivity.joblib": "ecb207ca1d17e0182c6994b3d9b1d517f235643c70d7462b6d399a16c03a77fe",
+    "GBM_n512_recovery.joblib": "72367f563161921420793485f8268d57e49f461c2c1e81ce3d8e0f2cd25b2da6",
+    "GBM_n512_z.joblib": "5f457a4f4c6765138bbac0f68c7e038298effa6d847a6777dbc5951d970f227c",
+    "GBM_n512_z_q0.90.joblib": "cb003aa58f8a73fe0b7419ca72eb5e391401a278b09fc8ed889f2bc30a9638d9",
+    "GBM_n512_z_q0.95.joblib": "a9b4fcacb08999944c50ec015aac427c470003019b580e2d8a51ac02e2278d72",
+    "GP_n128_productivity.joblib": "4ccaab25e6094bb547c83e3b02622ce33362aa4d9a068e200de404d5d99a9e01",
+    "GP_n128_recovery.joblib": "79e272b2f240070b1ca18e813b502d45129d779169a7ec4e2c54aac27a4be4f2",
+    "GP_n128_z.joblib": "ddf5977bb04b1f499339efb7fecc3bb611b383abc09a6dbbcf3c1f78b54b5f01",
+    "GP_n256_productivity.joblib": "735078ab334f427fa8a4221fecf23892d8448f228843beb4606c3626a26ca744",
+    "GP_n256_recovery.joblib": "4ec09e27ecc3520881303de136e43e92fa7e83b7f4670aba8f9715236fea14e3",
+    "GP_n256_z.joblib": "5c9a47b0e3cb2a817f088c5fe62987be98a4f0ed060f63436778772576419aac",
+    "GP_n512_productivity.joblib": "2ade0bab172d692ecf76ce934987b936d168fe82779081d49ba5a27fb17d75b5",
+    "GP_n512_recovery.joblib": "5b81a14c561765ac7e191098e9723a832ce079bf63b89ff26431fec7d5410113",
+    "GP_n512_z.joblib": "9fab02a821ce43eb34601b459fad0a3c6e1eb837ff03a5210bb82281a41bc5b6"
+  },
+  "q_sha256": "ed2c38d750ca85734460f71c4482c369d0c0fdc62c638a074e531ee2eed5fe0e",
+  "selected_sha256": {
+    "S_nom_points": "3fc661131cc40987368e88fb856b347cceeccfa4958d5b8d367a1dd04a02dd93",
+    "S_dist_points": "b3c5afc464696d595a126e9fc61b7a4d490a6cd99ff17421fb5005f611c2d510",
+    "S_nom_memberships": "8790516257af6880c7f404dc2d854f8ae2806046e66d82e476ae93140ab88ad9",
+    "S_dist_memberships": "c49589c3ffd78230da578ddf41a68f1aa7f69f5bbc20085911f94b0305083bd9"
+  },
+  "prediction_sha256": {
+    "D_shift.csv": "ba2d95efdf3aad1237e66a19f84a088210487bce207e75e14a24d81b00c75a2c",
+    "D_test.csv": "e23471664ae2c8c7bd4eccfb1cbab90e5932b29b262724062d43c0f84fa0ee86",
+    "S_dist.csv": "248a6d549b10738af0f9baefb4f54633c3a23428fa993b09cc2caf7a24acf465",
+    "S_nom.csv": "38888b10e5f9db2720a3869772731919e24dcaaca41857e9832f395810d7a69a"
+  },
+  "phase_wall_s": {
+    "train": 204.75930891698226,
+    "calibrate": 1.7325226671528071,
+    "diagnostics": 1.2646627081558108,
+    "select": 49.03034691698849
+  },
+  "source_sha256": {
+    "scripts/run_step6b.py": "2a134407f399f34a22b4976270ced27e9df2a23e0fbe1d5a7245ba84decc4d27",
+    "scripts/analyse_step6.py": "b406fc0a0bacd461839c9ac681318fff3d73d916a0b5e9f18476122fac736f52",
+    "src/h2psa/step6.py": "4da545007fc1ae212d15a8ebc7cc1dfd2dc984a84ea6d68a807cce580bac084e",
+    "src/h2psa/selection.py": "eeba1f4b7533cdee3d8c99dd5555b67b5ac84b35a88ac8e5241826f4fbd041e6",
+    "src/h2psa/step6_metrics.py": "7ce1acd6c05c0fef9bfb24ed6710dc90eb8eb54ce571fa934ab3284fa3be1c59"
+  }
+}

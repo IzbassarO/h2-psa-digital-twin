@@ -1,0 +1,11 @@
+{
+  "failed_arms": [],
+  "checks": [],
+  "checks_common": [
+    "rank ceil((n+1)*(1-alpha)); no interpolated quantile",
+    "one-sided upper Clopper-Pearson beta .95",
+    "raw z-score / GP sigma for L; quantile residual for GBM L",
+    "censored z=3; cap last-cycle labels included"
+  ],
+  "methods_changed": false
+}

@@ -268,3 +268,42 @@ use `scripts/run_batch.py` under `caffeinate -i` with checkpoint / resume.
   further 6.14 hours after generation. This records the delay from deferred
   agent-controlled publication; all 1152 points were generated once, in the
   registered order, and no sampling, numerical or analysis decision changed.
+* **2026-10-13 — Step 6b numerical conventions fixed before held-out-label inspection.**
+  The frozen text does not specify GP initial kernel values/upper bounds, CV fold
+  shuffling, or inverse representatives for repaired discrete unit coordinates.
+  GP uses the installed sklearn defaults: unit initial covariance amplitude,
+  length scales and white-noise level; amplitude and eight length-scale bounds
+  [1e-5, 1e5], and white-noise variance (`noise_level`) bounds [1e-6, 1e5]. `normalize_y=True` implements
+  the constant empirical mean and population-standardised target; default
+  `alpha=1e-10` is numerical jitter. Ten optimiser restarts are additional to
+  the initial fit. Predictive sigma includes the registered white-noise term.
+  GBM uses `KFold(5, shuffle=False)` on eligible rows in original prefix order,
+  negative mean squared error / pinball loss to choose the best of all 54 grid
+  combinations, and `early_stopping=False` to honour each registered max_iter.
+  Other estimator settings retain the pinned library defaults. Objective fits
+  exclude censored and failed rows; cap rows retain their last-cycle labels.
+  Optimiser repair maps bin k for f_zeolite to (k+0.5)/31 and bin j for
+  n_equalisations to (j+0.5)/3 before surrogate evaluation, preserving the frozen
+  physical mapping. Polynomial mutation probability 1/8 applies per coordinate
+  (`prob=1`, `prob_var=1/8` in pymoo). Deterministic order is GP then GBM;
+  training sizes 128, 256, 512; primary P/G/L then secondary G/L at 512;
+  seeds 10, 11, 12; stable index order resolves equal-distance selection ties.
+  These pre-results declarations supply implementation details omitted by v1;
+  no held-out labels are used to choose them.
+* **2026-10-13 — Step 6b gate/report order.** The lead explicitly requests the
+  D_test sanity gate before optimisation and descriptive test RMSE in Step 6b.
+  This moves those diagnostics ahead of the section-8 optimisation/selection
+  order. All fits, hyperparameters and optimiser settings are frozen first;
+  the diagnostics do not change methods, hyperparameters or selected-arm settings.
+* **2026-10-13 — duplicate/statistical implementation declarations.** The lead
+  confirmed that a shared rounded physical point has one simulation ID and is
+  counted once within each arm; cross-arm memberships remain in pooled arm rates.
+  Stable first membership supplies the seed cluster for within-arm duplicates.
+  Exact p-value ties use the fixed RQ1/RQ2/RQ3/RQ5 order for Holm ranks; bootstrap
+  percentiles use NumPy's linear interpolation and original Holm-assigned levels.
+  The primary RQ2 gate uses all primary alpha=0.10 G/L arms; secondary alpha=0.05
+  diagnostics are reported independently. Undefined logistic/bootstrap fits are
+  reported as undefined rather than replaced or omitted from quantiles. Cluster
+  covariance uses the pinned statsmodels finite-sample correction. One rng5 stream
+  bootstraps fronts in lexical arm order; one rng6 stream bootstraps RQ1, RQ2,
+  paired RQ3, then RQ5. These conventions were fixed before test-label inspection.
