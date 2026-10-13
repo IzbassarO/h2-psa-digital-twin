@@ -156,6 +156,21 @@ def export_block(block: str, work_root: Path = WORK, generated: Path | None = No
 
 def commit_and_push(block: str, path: Path):
     relative = str(path.relative_to(ROOT))
+    expected = {f"data/generated/{name}.csv": f"Step 6a: {name} ({size} points)"
+                for name, size in SIZES.items()}
+    if relative != f"data/generated/{block}.csv" or relative not in expected:
+        raise RuntimeError("Publication is restricted to registered block CSVs")
+
+    def git_text(arguments, cwd=ROOT):
+        return subprocess.check_output(["git", *arguments], cwd=cwd, text=True).strip()
+
+    def verify_commit(commit: str, cwd: Path, required_path: str | None = None):
+        names = git_text(["diff-tree", "--no-commit-id", "--name-only", "--root", "-r", commit], cwd).splitlines()
+        if len(names) != 1 or names[0] not in expected or (required_path and names[0] != required_path):
+            raise RuntimeError("Refusing publication of a commit containing anything beyond one registered CSV")
+        if git_text(["show", "-s", "--format=%s", commit], cwd) != expected[names[0]]:
+            raise RuntimeError("CSV commit message differs from the registered block message")
+
     subprocess.run(["git", "add", "--", relative], cwd=ROOT, check=True)
     changed = subprocess.run(["git", "diff", "--cached", "--quiet", "--", relative], cwd=ROOT)
     if changed.returncode == 1:
@@ -165,7 +180,55 @@ def commit_and_push(block: str, path: Path):
         subprocess.run(["git", "commit", "-m", f"Step 6a: {block} ({SIZES[block]} points)"], cwd=ROOT, check=True)
     elif changed.returncode != 0:
         raise RuntimeError("Could not inspect staged CSV")
-    subprocess.run(["git", "push", "origin", "HEAD"], cwd=ROOT, check=True)
+    local_commit = git_text(["log", "-1", "--format=%H", "--", relative])
+    verify_commit(local_commit, ROOT, relative)
+    local_blob = git_text(["rev-parse", f"{local_commit}:{relative}"])
+
+    # Publish CSV commits from a separate history. The simulation checkout may
+    # contain local infrastructure changes which must never enter this push.
+    subprocess.run(["git", "fetch", "origin", "main"], cwd=ROOT, check=True)
+    remote = git_text(["rev-parse", "refs/remotes/origin/main"])
+    publication_file = WORK / "csv-publish.json"
+    publishing = WORK / "csv-publish"
+    if publication_file.exists():
+        publication = json.loads(publication_file.read_text())
+    else:
+        publication = {"base": remote, "remote": remote}
+        atomic_json(publication_file, publication)
+    if not publishing.exists():
+        if remote != publication["remote"]:
+            raise RuntimeError("Remote main changed unexpectedly before CSV worktree creation")
+        subprocess.run(["git", "worktree", "add", "--detach", str(publishing), publication["base"]],
+                       cwd=ROOT, check=True)
+    head = git_text(["rev-parse", "HEAD"], publishing)
+    if remote not in (publication["remote"], head):
+        raise RuntimeError("Remote main changed unexpectedly; CSV publication stopped")
+    ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", publication["base"], "HEAD"],
+                             cwd=publishing)
+    if ancestor.returncode != 0:
+        raise RuntimeError("CSV publishing worktree no longer descends from its recorded remote base")
+    if git_text(["status", "--porcelain"], publishing):
+        raise RuntimeError("CSV publishing worktree has unfinished changes")
+
+    def verify_outgoing():
+        commits = git_text(["rev-list", "--reverse", f"{publication['base']}..HEAD"], publishing).splitlines()
+        for commit in commits:
+            verify_commit(commit, publishing)
+
+    verify_outgoing()
+    exists = subprocess.run(["git", "cat-file", "-e", f"HEAD:{relative}"], cwd=publishing,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    same_blob = exists.returncode == 0 and git_text(["rev-parse", f"HEAD:{relative}"], publishing) == local_blob
+    if not same_blob:
+        subprocess.run(["git", "cherry-pick", "--ff", "--no-edit", local_commit], cwd=publishing, check=True)
+    published_commit = git_text(["log", "-1", "--format=%H", "--", relative], publishing)
+    verify_commit(published_commit, publishing, relative)
+    verify_outgoing()
+    subprocess.run(["git", "-c", "push.followTags=false", "push", "origin", "HEAD:main"],
+                   cwd=publishing, check=True)
+    publication["remote"] = git_text(["rev-parse", "HEAD"], publishing)
+    atomic_json(publication_file, publication)
+    return {"local": local_commit, "published": published_commit}
 
 
 def save_report(state: dict, work_root: Path = WORK):
@@ -264,15 +327,21 @@ def generate(args):
             return code or 1
         if phase != "pilot":
             csv = export_block(block)
+            if args.defer_publication:
+                state["phases"][phase]["generation_complete"] = True
+                state["status"] = f"awaiting CSV publication {block}"
+                atomic_json(path, state)
+                save_report(state)
+                print(f"Ready to commit and push completed block CSV: {csv}", flush=True)
+                return 0
             try:
-                commit_and_push(block, csv)
+                commits = commit_and_push(block, csv)
             except Exception:
                 state["status"] = f"paused {phase}: CSV commit/push failed"
                 atomic_json(path, state)
                 save_report(state)
                 raise
-            state.setdefault("commits", {})[block] = subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+            state.setdefault("commits", {})[block] = commits
         state["phases"][phase]["complete"] = True
         atomic_json(path, state)
         save_report(state)
@@ -287,6 +356,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prepare", action="store_true")
     parser.add_argument("--workers", type=int, choices=(6, 8), default=8)
+    parser.add_argument("--defer-publication", action="store_true",
+                        help="finish/export one block, then stop for its CSV-only commit and push")
     args = parser.parse_args()
     prepare()
     if args.prepare:

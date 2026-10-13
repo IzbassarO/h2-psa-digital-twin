@@ -155,6 +155,56 @@ def test_resume_at_cap_does_not_run_an_additional_css_loop_iteration(batch, fake
     assert saved["status"] == "cap" and saved["cycles_total"] == 2000
 
 
+def test_interrupted_retry_resumes_second_attempt_without_repeating_primary(batch, fake_column, monkeypatch):
+    out, _ = fake_column
+    calls = []
+
+    def solve(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise RuntimeError("synthetic primary failure")
+        if len(calls) == 2:
+            assert kwargs["y0"] is None
+            kwargs["checkpoint"](10, np.array([0.7, 0.3]))
+            raise KeyboardInterrupt()
+        np.testing.assert_array_equal(kwargs["y0"], [0.7, 0.3])
+        assert kwargs["max_cycles"] == 1990
+        return result()
+
+    monkeypatch.setattr(batch, "CycleRunner", lambda *a, **k: SimpleNamespace(run_to_css=solve))
+    with pytest.raises(KeyboardInterrupt):
+        batch.run_point("point", {"t_feed": 50.0}, out, blind=True, retry_failures=True)
+    with np.load(out / "ckpt" / "point.npz") as checkpoint:
+        meta = json.loads(str(checkpoint["meta"].item()))
+        assert meta["attempt"] == 2 and len(meta["errors"]) == 1
+    batch.run_point("point", {"t_feed": 50.0}, out, blind=True, retry_failures=True)
+    saved = saved_case(out)
+    assert len(calls) == 3 and saved["attempts"] == 2
+    assert saved["solver_failures"] == 1 and len(saved["attempt_errors"]) == 1
+
+
+def test_censor_cycle_count_and_comparison_window_survive_resume():
+    from h2psa.cycle import CycleRunner
+
+    run = object.__new__(CycleRunner)
+    run.m = SimpleNamespace(y0=np.ones(6), nv=6, ns=2)
+    run.feed_bc = (None, SimpleNamespace(P=1.0))
+    run.retries = 0
+    calls = []
+
+    def fake_cycle(y, *, trace=False, profiles=False):
+        calls.append((trace, profiles))
+        return SimpleNamespace(perf=dict(ppm=1600.0 + len(calls), recovery_pct=50.0, closure=0.0),
+                               y_end=y, profiles=None, trace=None, steps={})
+
+    run.run_cycle = fake_cycle
+    retained = [1500.0] * 90
+    finished = run.run_to_css(max_cycles=2000, censor=(100, 1000.0, 30), censor_history=retained)
+    assert finished["cycles"] == 10 and finished["censored"] == 1610.0
+    assert len(retained) == 100
+    assert calls[-1] == (True, True) and len(calls) == 11  # Frozen reporting cycle.
+
+
 def test_active_retry_checkpoint_counts_as_one_primary_failure(batch, fake_column):
     out, model = fake_column
     write_checkpoint(out, model, n=0, errors=[{"attempt": 1, "error": "synthetic"}], attempt=2)
@@ -194,3 +244,33 @@ def test_monitor_gate_stops_new_submissions_and_drains_workers(batch, tmp_path, 
                        "--retry-failures", "--failure-limit", "0.02", "--cap-limit", "0.05",
                        "--block-size", "10"]) == 3
     assert submitted == ["point_0", "point_1"]
+
+
+@pytest.mark.parametrize("counts", [(1, 0), (0, 1)])
+def test_monitor_threshold_is_strictly_exceeded(batch, tmp_path, monkeypatch, counts):
+    points = tmp_path / "points.csv"
+    pd.DataFrame({"id": [f"point_{i}" for i in range(10)]}).to_csv(points, index=False)
+    submitted = []
+
+    class FakeExecutor:
+        def __init__(self, workers):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def submit(self, function, pid, *args, **kwargs):
+            submitted.append(pid)
+            future = Future()
+            future.set_result(pid)
+            return future
+
+    monkeypatch.setattr(batch, "ProcessPoolExecutor", FakeExecutor)
+    monkeypatch.setattr(batch, "block_counts", lambda out: counts)
+    monkeypatch.setattr(batch, "summary", lambda out: pd.DataFrame())
+    assert batch.main([str(points), str(tmp_path / "out"), "--workers", "2", "--blind",
+                       "--failure-limit", "0.1", "--cap-limit", "0.1", "--block-size", "10"]) == 0
+    assert len(submitted) == 10

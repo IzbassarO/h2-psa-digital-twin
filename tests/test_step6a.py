@@ -182,28 +182,156 @@ def test_monitoring_reader_returns_only_status_timing_and_provenance(step6a, syn
     }
 
 
-def test_data_commit_contains_only_completed_block_csv(step6a, tmp_path, monkeypatch):
+@pytest.fixture
+def fake_publication(step6a, tmp_path, monkeypatch):
+    """Model both Git histories; every subprocess is intercepted before execution."""
     import types
 
-    path = tmp_path / "data" / "generated" / "D_train.csv"
+    class FakeGit:
+        root = tmp_path
+        work = tmp_path / "work"
+        publishing = work / "csv-publish"
+        relative = "data/generated/D_train.csv"
+        base = "remote_base_sha"
+        local = "local_csv_sha"
+        published = "published_csv_sha"
+        blob = "csv_blob_sha"
+
+        def __init__(self):
+            self.calls = []
+            self.remote = self.base
+            self.head = self.base
+            self.outgoing = []
+            self.staged_change = True
+            self.has_blob = False
+            self.files = {self.local: [self.relative], self.published: [self.relative]}
+            self.messages = {sha: "Step 6a: D_train (512 points)" for sha in self.files}
+
+        def existing_worktree(self, head):
+            self.publishing.mkdir(parents=True, exist_ok=True)
+            step6a.atomic_json(self.work / "csv-publish.json", {"base": self.base, "remote": self.base})
+            self.head = head
+            self.outgoing = [head] if head != self.base else []
+
+        def run(self, command, **kwargs):
+            cwd = kwargs["cwd"]
+            self.calls.append((command, cwd))
+            args = command[1:]
+            returncode = 0
+            if args[:3] == ["diff", "--cached", "--quiet"]:
+                returncode = int(self.staged_change)
+            elif args[0] == "commit":
+                assert cwd == self.root
+                self.staged_change = False
+            elif args[:3] == ["worktree", "add", "--detach"]:
+                assert args[-1] == self.base
+                Path(args[-2]).mkdir(parents=True)
+            elif args[:2] == ["cat-file", "-e"]:
+                returncode = 0 if self.has_blob else 1
+            elif args[0] == "cherry-pick":
+                assert cwd == self.publishing and args == ["cherry-pick", "--ff", "--no-edit", self.local]
+                self.head = self.published
+                self.outgoing.append(self.published)
+                self.has_blob = True
+            elif args[:4] == ["-c", "push.followTags=false", "push", "origin"]:
+                assert cwd == self.publishing and args[-1] == "HEAD:main"
+                self.remote = self.head
+            elif args[0] not in ("add", "fetch", "merge-base"):
+                raise AssertionError(f"Unexpected mocked git command: {command}")
+            return types.SimpleNamespace(returncode=returncode)
+
+        def text(self, command, **kwargs):
+            cwd = kwargs["cwd"]
+            self.calls.append((command, cwd))
+            args = command[1:]
+            if args == ["diff", "--cached", "--name-only"]:
+                return self.relative + "\n"
+            if args[0] == "log":
+                return (self.local if cwd == self.root else self.published) + "\n"
+            if args[0] == "diff-tree":
+                return "\n".join(self.files[args[-1]]) + "\n"
+            if args[0] == "show":
+                return self.messages[args[-1]] + "\n"
+            if args == ["rev-parse", "refs/remotes/origin/main"]:
+                return self.remote + "\n"
+            if args == ["rev-parse", "HEAD"]:
+                return self.head + "\n"
+            if args[0] == "rev-parse" and ":" in args[-1]:
+                return self.blob + "\n"
+            if args == ["status", "--porcelain"]:
+                return ""
+            if args[0] == "rev-list":
+                assert args[-1] == self.base + "..HEAD"
+                return "\n".join(self.outgoing)
+            raise AssertionError(f"Unexpected mocked git output request: {command}")
+
+    git = FakeGit()
+    path = tmp_path / git.relative
     path.parent.mkdir(parents=True)
     path.write_text("id,status\nsynthetic,css\n")
-    monkeypatch.setattr(step6a, "ROOT", tmp_path)
-    commands = []
+    monkeypatch.setattr(step6a, "ROOT", git.root)
+    monkeypatch.setattr(step6a, "WORK", git.work)
+    monkeypatch.setattr(step6a.subprocess, "run", git.run)
+    monkeypatch.setattr(step6a.subprocess, "check_output", git.text)
+    return git, path
 
-    def fake_run(command, **kwargs):
-        commands.append(command)
-        return types.SimpleNamespace(returncode=1 if command[:3] == ["git", "diff", "--cached"] else 0)
 
-    monkeypatch.setattr(step6a.subprocess, "run", fake_run)
-    monkeypatch.setattr(step6a.subprocess, "check_output", lambda *a, **k: "data/generated/D_train.csv\n")
-    step6a.commit_and_push("D_train", path)
-    assert commands == [
-        ["git", "add", "--", "data/generated/D_train.csv"],
-        ["git", "diff", "--cached", "--quiet", "--", "data/generated/D_train.csv"],
-        ["git", "commit", "-m", "Step 6a: D_train (512 points)"],
-        ["git", "push", "origin", "HEAD"],
-    ]
+def test_data_commit_and_push_publish_only_csv_history(step6a, fake_publication):
+    git, path = fake_publication
+    assert step6a.commit_and_push("D_train", path) == {"local": git.local, "published": git.published}
+    root_commits = [command for command, cwd in git.calls if command[1] == "commit" and cwd == git.root]
+    assert root_commits == [["git", "commit", "-m", "Step 6a: D_train (512 points)"]]
+    assert (["git", "add", "--", git.relative], git.root) in git.calls
+    assert (["git", "worktree", "add", "--detach", str(git.publishing), git.base], git.root) in git.calls
+    assert (["git", "cherry-pick", "--ff", "--no-edit", git.local], git.publishing) in git.calls
+    pushes = [(command, cwd) for command, cwd in git.calls if "push" in command]
+    assert pushes == [(["git", "-c", "push.followTags=false", "push", "origin", "HEAD:main"], git.publishing)]
+    assert git.outgoing == [git.published]
+    assert git.files[git.published] == [git.relative]
+    import json
+    assert json.loads((git.work / "csv-publish.json").read_text()) == {
+        "base": git.base, "remote": git.published,
+    }
+
+
+def test_publication_restart_with_identical_blob_skips_duplicate_cherry_pick(step6a, fake_publication):
+    git, path = fake_publication
+    first = step6a.commit_and_push("D_train", path)
+    second = step6a.commit_and_push("D_train", path)
+    assert first == second == {"local": git.local, "published": git.published}
+    assert sum(command[1] == "commit" for command, _ in git.calls) == 1
+    assert sum(command[1] == "cherry-pick" for command, _ in git.calls) == 1
+    assert sum("push" in command for command, _ in git.calls) == 2
+    assert git.outgoing == [git.published]
+
+
+@pytest.mark.parametrize("payload", [["scripts/run_step6a.py"],
+                                     ["data/generated/D_train.csv", "tests/test_step6a.py"]])
+def test_publication_rejects_outgoing_source_or_test_payload(step6a, fake_publication, payload):
+    git, path = fake_publication
+    git.existing_worktree("unexpected_commit")
+    git.files["unexpected_commit"] = payload
+    git.messages["unexpected_commit"] = "Step 6a: D_train (512 points)"
+    with pytest.raises(RuntimeError, match="anything beyond one registered CSV"):
+        step6a.commit_and_push("D_train", path)
+    assert not any(command[1] == "cherry-pick" or "push" in command for command, _ in git.calls)
+
+
+def test_publication_pauses_when_remote_changes_unexpectedly(step6a, fake_publication):
+    git, path = fake_publication
+    git.existing_worktree(git.base)
+    git.remote = "unexpected_remote_commit"
+    with pytest.raises(RuntimeError, match="Remote main changed unexpectedly"):
+        step6a.commit_and_push("D_train", path)
+    assert not any(command[1] == "cherry-pick" or "push" in command for command, _ in git.calls)
+
+
+def test_publication_rejects_wrong_local_commit_message(step6a, fake_publication):
+    git, path = fake_publication
+    git.messages[git.local] = "Unregistered simulation and analysis changes"
+    with pytest.raises(RuntimeError, match="commit message differs"):
+        step6a.commit_and_push("D_train", path)
+    assert not any(command[1] in ("fetch", "cherry-pick") or "push" in command for command, _ in git.calls)
 
 
 def test_data_commit_rejects_unrelated_staged_files(step6a, tmp_path, monkeypatch):

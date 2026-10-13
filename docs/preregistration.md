@@ -250,3 +250,21 @@ use `scripts/run_batch.py` under `caffeinate -i` with checkpoint / resume.
   D_train points are submitted (one primary failure or two cap hits pauses intake).
   Subsequent checks use each full registered data-set size. This conservative
   additional check uses only failure/cap counts and changes no analysis decisions.
+* **2026-10-12 — CSV-only publication history.** Automatic approval review rejected
+  pushing the local infrastructure commit because the lead's publication instruction
+  covered generated CSVs. Each completed CSV is therefore committed locally and
+  its verified single-file change is cherry-picked into a separate publishing
+  checkout based on remote main. The lead subsequently approved infrastructure
+  commit 7f25a21 explicitly, and it was pushed separately after the pilot. Every
+  later publishing commit is checked to contain only its registered block CSV;
+  additional local infrastructure changes are excluded. Local and published commit
+  IDs are recorded separately. This changes publication history, not the data.
+* **2026-10-13 — publication checkpoint delays.** The CSV-only publication path
+  stops the driver after each completed block for the agent to commit and push
+  that concrete CSV before launching the next block. These checkpoints added
+  about 43 minutes between simulation phases. D_shift and its CSV finished at
+  00:21 EDT on 2026-10-13; its commit/push completed at 06:29 EDT when the agent
+  continued the session. The final publication checkpoint therefore added a
+  further 6.14 hours after generation. This records the delay from deferred
+  agent-controlled publication; all 1152 points were generated once, in the
+  registered order, and no sampling, numerical or analysis decision changed.
