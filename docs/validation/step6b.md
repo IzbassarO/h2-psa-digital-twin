@@ -138,3 +138,26 @@ P bands (not a conformal gate):
 | GBM_n512_L_a0.10 | 45 | 45 | 0 | 0 |
 | GBM_n512_G_a0.05 | 45 | 45 | 0 | 0 |
 | GBM_n512_L_a0.05 | 45 | 45 | 0 | 0 |
+
+## Addendum (Step 6c pre-simulation check, 2026-10-13): zero CQR quantiles
+
+Added by hand after generation (not produced by `scripts/run_step6b.py`). Check of q = 0 for GBM-L (CQR):
+case (b) applies. Neither `conformal_quantile` (`src/h2psa/step6.py`) nor the score path clips q or Qhat. The
+rank-r score is genuinely 0 because of ties. Every exactly-zero D_cal score belongs to a point with z = 3 (clipped
+label: censored, or impurity >= 1000 ppm at CSS) where the GBM quantile model predicts Qhat = 3.0 exactly
+(pinball-loss leaves at the upper clip of the training targets). For GBM/256 at alpha = 0.05 Qhat = 3.0 at all
+256 D_cal points (a constant model on D_cal), so no point with bound <= 2 exists in D_test (band count 0).
+No change: q is used as registered. The zero-q models are diagnostic arms only (the registered alpha = 0.05 arms
+are at n_train = 512; GBM/512-L has q = 0.295), so no selected arm is affected. Finding for the paper: the
+upper-tail calibration of CQR is dominated by trivially infeasible points.
+
+| arm | q | rank | scores = 0 | of which censored | of which z = 3 at CSS | ranks of the zero block | scores < 0 | scores > 0 |
+|---|---:|---:|---:|---:|---:|---|---:|---:|
+| GBM_n128_L_a0.10 | 0.205561 | 232 | 0 | 0 | 0 | – | 208 | 48 |
+| GBM_n256_L_a0.10 | 0.153805 | 232 | 0 | 0 | 0 | – | 201 | 55 |
+| GBM_n512_L_a0.10 | 0.230179 | 232 | 24 | 9 | 15 | 182-205 | 181 | 51 |
+| GBM_n128_L_a0.05 | 0.000000 | 245 | 56 | 32 | 24 | 191-246 | 190 | 10 |
+| GBM_n256_L_a0.05 | 0.000000 | 245 | 66 | 41 | 25 | 191-256 | 190 | 0 |
+| GBM_n512_L_a0.05 | 0.295350 | 245 | 37 | 17 | 20 | 195-231 | 194 | 25 |
+
+GP and GBM-G arms have no zero scores. D_cal: 256 points, 41 censored.

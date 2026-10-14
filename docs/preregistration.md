@@ -307,3 +307,8 @@ use `scripts/run_batch.py` under `caffeinate -i` with checkpoint / resume.
   covariance uses the pinned statsmodels finite-sample correction. One rng5 stream
   bootstraps fronts in lexical arm order; one rng6 stream bootstraps RQ1, RQ2,
   paired RQ3, then RQ5. These conventions were fixed before test-label inspection.
+* **2026-10-13 — Step 6c concurrency.** S_nom and S_dist are simulated with 6 workers instead of 8 because
+  other heavy jobs were active on the same 10-core machine at launch (an RStudio session at about 200 % CPU for
+  4 days, plus a pytest job; load average about 6). This is the Step 6a exception; the runner, its flags and its
+  pause rules are unchanged (`scripts/run_step6c.py` reuses `run_step6a.run_phase`). Publication is left to the
+  user (no git from the agent).
