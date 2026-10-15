@@ -40,7 +40,7 @@ from h2psa.step6_metrics import _observed, clopper_pearson, join_predictions, ne
 
 GEN, DIG = ROOT / "data" / "generated", ROOT / "data" / "benchmarks" / "digitized"
 VAL = ROOT / "docs" / "validation"
-FROZEN, C6, D6, A7, B7 = (VAL / s for s in ("step6b", "step6c", "step6d", "step7a", "step7b"))
+FROZEN, C6, D6, A7, B7, E8 = (VAL / s for s in ("step6b", "step6c", "step6d", "step7a", "step7b", "step8a"))
 BT_TRACES, CYCLE_TRACES = GEN / "model_breakthrough_step2.csv", GEN / "model_psa_cycle_step3.csv"
 STYLE = Path(__file__).with_name("figures.mplstyle")
 MM = 1 / 25.4
@@ -63,21 +63,23 @@ CAPTIONS = {
           "(Lopes 2010, Figs 5.18-5.19).",
     "F7": "Upper bound on z (P: point prediction) vs re-simulated impurity z = log10(ppm) of the optimiser-selected "
           "points (GP, n_train = 256, alpha = 0.10) for P, G and L (CP: conformal prediction); dashed: 100 ppm limit, "
-          "dotted: median surrogate mean prediction; filled: violations. Right: violation "
-          "rate with Clopper-Pearson 95 % CI, pooled per variant (Step 6c, pre-registered) and per surrogate "
-          "(Step 6d, exploratory).",
+          "dotted: median surrogate mean prediction; filled: violations. (d) Violation "
+          "rate with Clopper-Pearson 95 % CI at alpha = 0.10, pooled over n_train = 128, 256, 512: per variant "
+          "(Step 6c, pre-registered), per surrogate (Step 6d, exploratory) and the replication of GP-G, GP-L and "
+          "GBM-L on new optimiser seeds (Step 8a, pre-registered in Addendum B).",
     "FS7": "As Fig. F7 a-c for GP, n_train = 512, alpha = 0.10.",
     "F8": "Mechanism: (a) GP-L predictive sigma and (b) GBM-L quantile-minus-mean gap Qhat_(1-alpha) - mean at the "
-          "selected points vs the random D_test points (alpha = 0.10; Step 6d, exploratory).",
+          "selected points vs the random D_test points (n_train = 128, 256, 512; alpha = 0.10; Step 6d, exploratory).",
     "F9": "Cost of the guarantee (Step 7a, exploratory, fixed reference point (0, 0)): (a) realised fronts of P, G and "
-          "L (GP, n_train = 512, alpha = 0.10) and the best-known front; (b) H2 recovery loss of G and L vs the "
+          "L (GP, n_train = 512, alpha = 0.10) and the best-known front; (b) H2 recovery loss of G and L (GP, n_train = 512, "
+          "alpha = 0.10 and 0.05) vs the "
           "oracle-filtered P front at matched productivity (an upper bound on the cost); dotted: the G / L front lies below "
           "its lowest realised productivity and its recovery is held at that point's value; left of the vertical line "
           "the P front is held likewise.",
     "F10": "Robustness: (a) miscoverage (z > bound) of the G and L arms (n_train = 512, alpha = 0.10) vs adsorbent "
            "capacity factor phi on S_dist (Step 6c; binned, Clopper-Pearson 95 % CI) with the RQ5 logistic fit "
-           "(S_dist intercept, CH4 and CO fractions at their S_dist means); (b) violation rate of the GP n_train = 512 selected points under the "
-           "Step 7b model-form scenarios (descriptive).",
+           "(S_dist intercept, CH4 and CO fractions at their S_dist means); (b) violation rate of the GP n_train = 512 selected points (P at alpha = 0.10; G and L at "
+           "alpha = 0.10 and 0.05) under the Step 7b model-form scenarios (descriptive).",
 }
 
 
@@ -239,7 +241,7 @@ def f7(out, n=256, name="F7_bound_vs_resimulated"):
     sel = selected()
     rates_panel = n == 256
     fig = plt.figure(figsize=(DOUBLE if rates_panel else DOUBLE * 0.65, 58 * MM))
-    gs = fig.add_gridspec(1, 4 if rates_panel else 3, width_ratios=(1, 1, 1, 1.5) if rates_panel else (1, 1, 1))
+    gs = fig.add_gridspec(1, 4 if rates_panel else 3, width_ratios=(1, 1, 1, 1.8) if rates_panel else (1, 1, 1))
     data, first = [], None
     xlim, ylim = (1.975, 2.003), (0.6, 3.0)       # every selected GP bound (n = 256, 512) lies in [1.979, 2.000]
     for i, v in enumerate("PGL"):
@@ -280,17 +282,21 @@ def f7(out, n=256, name="F7_bound_vs_resimulated"):
             r = d6.loc[(d6["surrogate"] == s) & (d6["variant"] == v)].iloc[0]
             rows.append(dict(panel="rates", group="6d by surrogate (exploratory)", surrogate=s, variant=v,
                              x=3.7 + 3.4 * j + i, **cp(r["k"], r["n"])))
+    p8 = read(E8 / "pooled.csv").set_index("group")
+    for i, (s, v) in enumerate((("GP", "G"), ("GP", "L"), ("GBM", "L"))):
+        rows.append(dict(panel="rates", group="replication 8a (prereg.)", surrogate=s, variant=v, x=10.5 + i,
+                         **cp(p8.loc[f"{s}_{v}", "k"], p8.loc[f"{s}_{v}", "n"])))
     rates = pd.DataFrame(rows)
     ax.axhline(0.10, ls="--", color="0.4", lw=0.6)
-    ax.text(9.6, 0.11, r"$\alpha$ = 0.10", ha="right", va="bottom", fontsize=6, color="0.4")
+    ax.text(12.9, 0.11, r"$\alpha$ = 0.10", ha="right", va="bottom", fontsize=6, color="0.4")
     for _, r in rates.iterrows():
         rate_points(ax, [r["x"]], [r], VARIANT[r["variant"]], marker="D" if r["surrogate"] == "pooled" else
                     "o" if r["surrogate"] == "GP" else "s")
     ax.set(xticks=rates["x"], xticklabels=rates["variant"], ylim=(-0.02, 1.02), ylabel="violation rate of selected points",
-           xlim=(-0.6, 10.4))
-    for x, text in ((1, "pooled\n6c (prereg.)"), (4.7, "GP\n6d (expl.)"), (8.1, "GBM\n6d (expl.)")):
+           xlim=(-0.6, 13.1))
+    for x, text in ((1, "pooled\n6c (prereg.)"), (4.7, "GP\n6d (expl.)"), (8.1, "GBM\n6d (expl.)"), (11.5, "GP | GBM\n8a (prereg.)")):
         ax.text(x, -0.13, text, ha="center", va="top", transform=ax.get_xaxis_transform(), fontsize=6)
-    for x in (2.85, 6.25):
+    for x in (2.85, 6.25, 9.8):
         ax.axvline(x, color="0.85", lw=0.5)
     label(ax, "(d) violation rate, alpha = 0.10")
     save(fig, name, out)
@@ -501,6 +507,16 @@ def t2():
         return dict(RQ=rq, H0=h0, estimate=est, ci_lower=lo, ci_upper=hi, p_one_sided=d.get(p_key, np.nan),
                     holm_level=d.get("level", np.nan), p_adjusted=d.get("adjusted_p", np.nan),
                     verdict=d.get("verdict", "descriptive"), cluster_bootstrap=boot)
+    h8, b8 = read(E8 / "hypotheses.csv").set_index("hypothesis"), read(E8 / "bootstrap.csv").set_index("hypothesis")
+    p8 = read(E8 / "pooled.csv").set_index("group")
+    def row8(h, h0, est, lo, hi):              # Step 8a (Addendum B): its own Holm family over H_B1-H_B3
+        d, b = h8.loc[h], b8.loc[h]
+        return dict(RQ=h, H0=h0, estimate=est, ci_lower=lo, ci_upper=hi, p_one_sided=d["p_value"],
+                    holm_level=d["level"], p_adjusted=d["adjusted_p"], verdict=d["verdict"],
+                    cluster_bootstrap=f"{b['side']} {b['bound']:.3f}: {b['robustness']}")
+    rate8 = {g: (f"{int(r.k)}/{int(r.n)} = {r.rate:.3f}", r.ci_lower, r.ci_upper) for g, r in p8.iterrows()}
+    gg, ll = p8.loc["GP_G"], p8.loc["GP_L"]
+    d8, d8_lo, d8_hi = newcombe_difference(int(gg["k"]), int(gg["n"]), int(ll["k"]), int(ll["n"]))
     return pd.DataFrame([
         row("RQ1", "violation rate P <= 0.10", f"{cnt['P']['k']}/{cnt['P']['n']} = {cnt['P']['rate']:.3f}",
             cnt["P"]["ci_lower"], cnt["P"]["ci_upper"], f"lower {rob['RQ1']['lower']:.3f}: {rob['RQ1']['verdict']}"),
@@ -514,6 +530,9 @@ def t2():
             *(hv[f"GP_n512_{v}_a0.10"] for v in "PGL")), np.nan, np.nan, ""),
         row("RQ5", "b_phi >= 0", f"b_phi = {lg['b_phi']:.3f} (OR phi 0.70 vs 1.00 = {lg['odds_ratio']:.2f})",
             lg["b_phi_lower"], lg["b_phi_upper"], f"upper {rob['RQ5']['upper']:.3f}: {rob['RQ5']['verdict']}"),
+        row8("H_B1", "violation rate GP-L >= 0.17", *rate8["GP_L"]),
+        row8("H_B2", "violation rate GBM-L <= 0.10", *rate8["GBM_L"]),
+        row8("H_B3", "GP-G - GP-L <= 0", f"{d8:+.3f}", d8_lo, d8_hi),
     ])
 
 
@@ -585,7 +604,10 @@ def main(argv=None):
                  p=b["p_one_sided"].map(fmt), p_adj=b["p_adjusted"].map(fmt), level=b["holm_level"].map(fmt))
         [["RQ", "H0", "estimate", "ci95", "p", "level", "p_adj", "verdict", "cluster_bootstrap"]],
         tables / "T2_preregistered_results.tex", "Pre-registered results of Step 6c (Holm step-down over RQ1, RQ2, RQ3, "
-        "RQ5 at family-wise 0.05; RQ3 requires both RQ3a and RQ3b; RQ4 descriptive).", "tab:preregistered")
+        "RQ5 at family-wise 0.05; RQ3 requires both RQ3a and RQ3b; RQ4 descriptive) and of the Step 8a replication "
+        "(Addendum B, new optimiser seeds 13-15; separate Holm step-down over H\\_B1-H\\_B3 at family-wise 0.05; "
+        "rates pooled over $n_\\mathrm{train}$ = 128, 256, 512 at $\\alpha$ = 0.10). CI: Clopper-Pearson 95 \\% "
+        "(differences: Newcombe); cluster bootstrap: robustness flag.", "tab:preregistered")
     c = t3()
     c.to_csv(tables / "T3_model_form_scenarios.csv", index=False)
     tex(t3_tex(c), tables / "T3_model_form_scenarios.tex", "Model-form scenarios of Step 7b (descriptive, designed "

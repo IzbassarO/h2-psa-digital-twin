@@ -25,3 +25,7 @@ def test_make_figures_end_to_end(tmp_path):
     assert dict(fs7.groupby("variant")["violation"].sum()) == {"P": 17, "G": 1, "L": 0}     # n_train = 512
     t3 = pd.read_csv(tmp_path / "tables" / "T3_model_form_scenarios.csv").set_index("key")
     assert t3.loc["ep_inflow_ed_gas", "P_a0.10_k"] == 30 and (t3["css"] == 210).all()
+    rep = f7.loc[f7["group"] == "replication 8a (prereg.)"]
+    assert list(zip(rep["surrogate"], rep["variant"], rep["k"])) == [("GP", "G", 51), ("GP", "L", 1), ("GBM", "L", 130)]
+    t2 = pd.read_csv(tmp_path / "tables" / "T2_preregistered_results.csv").set_index("RQ")
+    assert t2.loc[["H_B1", "H_B2", "H_B3"], "verdict"].eq("confirmed").all()       # Step 8a, Addendum B
