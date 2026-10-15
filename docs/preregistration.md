@@ -405,3 +405,63 @@ no confirmatory language. This addendum and its scripts are committed before any
   * Step-7a fronts: reference point (recovery 0 %, productivity 0). Per arm: feasible points, realised front and
     hypervolume. Recovery at productivity 100, 125, ..., 250 mol/kg/day, interpolated on the realised front; loss
     vs P in the same scenario and change vs the same arm at baseline.
+
+## Addendum B (2026-10-15) — Step 8a confirmatory replication of the Step 6d finding
+
+Decided by the project lead on 2026-10-15. **Designed after the Step 6c results, the exploratory Step 6d diagnostics
+and Step 7b.** The hypotheses below come from Step 6d (exploratory): pooled over n_train at alpha = 0.10, GP-L
+violated at 5/135, GBM-L at 132/135 and GP-G at 51/135 selected points. Step 8a tests them on NEW selected points, so
+it is confirmatory **only for H_B1-H_B3 below**; everything else in it is descriptive. Sections 1-9, Addendum A and
+the Step 6c-7b results are unchanged. This addendum and `scripts/run_step8a.py` / `scripts/analyse_step8a.py` are
+committed before any Step 8a optimisation runs; the selected point list is committed before any Step 8a simulation.
+
+* **Frozen, reused unchanged:** the 24 Step 6b models (`results/step6b/models`, checked against the hashes in
+  `results/step6b/workflow.json`), the conformal quantiles `q.csv` (hash-checked), the bounds of section 5, the NSGA-II
+  settings of section 6 and the Deviations of 2026-10-13 (population 100, 250 generations, SBX eta 15 / p 0.9,
+  PM eta 20 / per-coordinate p 1/8, canonical repair, Deb's feasibility rules) and the section 6 selection rule
+  (m = 15 points per seed at the productivity quantiles of the final feasible non-dominated set; 45 points per arm).
+  Same pinned environment (Python 3.14.7 and the section 5 libraries). Before the new seeds run, the script reruns
+  one Step 6b optimisation (GP_n128_L_a0.10, seed 10) and stops unless its selected points equal the stored ones
+  exactly.
+* **New NSGA-II seeds 13, 14, 15 only.**
+* **Arms (alpha = 0.10):** GP-L, GBM-L and GP-G at n_train = 128, 256, 512: 9 arms x 3 seeds x 15 = 405 selected
+  points. Arm and seed order: section 6 order (`registered_arms`), seeds ascending.
+* **Point list:** `data/generated/S_rep_points.csv` and `S_rep_memberships.csv`, IDs `S_rep_0000`, ... One ID per
+  unique physical point; a point shared by arms is simulated once and counted once per arm; within-arm duplicates
+  count once (first seed), as in Step 6b (`selection.build_selected_lists`).
+* **Reuse:** a selected point whose design vector (the 8 physical decision variables; disturbances are nominal for
+  both) equals an S_nom point exactly reuses that point's Step 6c label (column `snom_id`) and is not simulated. The
+  number of reused points is reported.
+* **Simulation, exactly as Step 6c:** `run_step6a.run_phase` / `run_batch.py` with blind monitoring, warm start from
+  the nearest finished CSS state of the same batch (starting empty), CSS after >= 10 plain cycles with the frozen
+  tolerances, censoring rule of section 3, once-only He-filled-column retry, pause at 2 % failures or 5 % cap hits,
+  `--point-timeout 7200` (2 h per attempt, Deviations 2026-10-14), 6 workers, `caffeinate -i`, `nohup`,
+  `HOMEBREW_NO_AUTO_UPDATE=1`. Labels: `data/generated/S_rep.csv`. Failure rule of section 3: final failures are
+  excluded from the primary rates and counted as violations in a sensitivity analysis.
+* **Violation:** z > 2 (censored z = 3). Pooled rate of a group = its 3 arms (n_train 128, 256, 512) pooled, each
+  point counted once per arm (n = 135 per group if no duplicates or failures).
+* **Hypotheses** (one one-sided exact p-value each):
+  * **H_B1:** pooled GP-L violation rate is at most 0.17. p_B1 = exact binomial, H0: rate >= 0.17 (alternative
+    less). Confirmed iff the one-sided Clopper-Pearson upper bound at the Holm level is <= 0.17 (equivalent to
+    p_B1 <= that level; reported as both).
+  * **H_B2:** pooled GBM-L violation rate > 0.10. p_B2 = exact binomial, H0: rate <= 0.10 (alternative greater).
+  * **H_B3:** pooled GP-G minus GP-L violation rate > 0. p_B3 = one-sided Fisher exact test, H0: rate_G <= rate_L
+    (the G - L component of RQ3).
+* **Multiplicity:** Holm's step-down over H_B1-H_B3 at family-wise 0.05 (levels 0.05/3, 0.05/2, 0.05 by rank; equal
+  p-values ranked in the order B1, B2, B3). A hypothesis is confirmed iff its Holm-adjusted p < 0.05.
+* **Robustness flag (as Step 6c):** cluster bootstrap, 2000 draws, one generator `numpy.random.default_rng(8)`, used in
+  the order H_B1, H_B2, H_B3. Clusters (arm, seed): 9 per group. H_B1: one-sided percentile upper bound of the GP-L
+  rate at 1 - (its Holm level) <= 0.17. H_B2: lower percentile of the GBM-L rate at its Holm level > 0.10. H_B3:
+  the (n_train, seed) clusters of GP-G and GP-L resampled jointly (paired); lower percentile of G - L at its Holm
+  level > 0. Linear percentiles. If a bootstrap verdict differs from the primary verdict, that hypothesis is
+  reported as "not robust". With 9 clusters the bootstrap is coarse.
+* **Power** (exact binomial, n = 135, independence assumed). H_B1 rejects at <= 13 / 14 / 15 violations at the
+  levels 0.0167 / 0.025 / 0.05; power at a true GP-L rate 0.04: >= 0.999; 0.08: 0.81-0.93; 0.10: 0.52-0.73. H_B2
+  rejects at >= 22 (level 0.0167) or >= 20 (0.05); power at a true rate 0.20: 0.88-0.95.
+* **Descriptive (no test):** per-arm and per-seed rates with Clopper-Pearson 95 % CIs; the failure sensitivity;
+  the Step 6c rates of the same arms beside the Step 8a rates.
+* **Commands.** `python scripts/run_step8a.py select` (optimisation and point list; refuses unless this addendum
+  and both scripts are committed unchanged). `HOMEBREW_NO_AUTO_UPDATE=1 nohup caffeinate -i .venv/bin/python
+  scripts/run_step8a.py simulate --workers 6 >> results/step8a/driver.log 2>&1 &` (refuses unless the point list is
+  committed unchanged). `python scripts/analyse_step8a.py` writes `results/step8a/analysis/` and copies its report to
+  `docs/validation/step8a.md` and its tables to `docs/validation/step8a/`.
