@@ -255,13 +255,16 @@ def save_report(state: dict, work_root: Path = WORK):
     (work_root / "REPORT.md").write_text("\n".join(lines) + "\n")
 
 
-def run_phase(phase: str, block: str, workers: int, state: dict, work_root: Path = WORK):
+def run_phase(phase: str, block: str, workers: int, state: dict, work_root: Path = WORK,
+              point_timeout: float | None = None):
     inputs = work_root / "inputs" / ("D_train_pilot.csv" if phase == "pilot" else f"{block}.csv")
     out = work_root / block
     out.mkdir(parents=True, exist_ok=True)
     command = ["caffeinate", "-i", sys.executable, str(ROOT / "scripts" / "run_batch.py"), str(inputs), str(out),
                "--workers", str(workers), "--blind", "--retry-failures", "--failure-limit", "0.02",
                "--cap-limit", "0.05", "--block-size", str(32 if phase == "pilot" else SIZES[block])]
+    if point_timeout is not None:                        # Step 6c only (Deviations 2026-10-14)
+        command += ["--point-timeout", str(point_timeout)]
     env = os.environ.copy()
     env.update(OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1", VECLIB_MAXIMUM_THREADS="1",
                NUMEXPR_NUM_THREADS="1", PYTHONUNBUFFERED="1")

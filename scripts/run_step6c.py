@@ -23,6 +23,7 @@ import run_step6a as g  # noqa: E402
 
 WORK = ROOT / "results" / "step6c"
 SIZES = {"S_nom": 900, "S_dist": 240}
+POINT_TIMEOUT_S = 7200          # 2 h per attempt, uniform for Step 6c (Deviations 2026-10-14)
 
 
 def main():
@@ -47,7 +48,7 @@ def main():
         for block, size in SIZES.items():
             if state["phases"].get(block, {}).get("complete"):
                 continue
-            code = g.run_phase(block, block, args.workers, state, WORK)
+            code = g.run_phase(block, block, args.workers, state, WORK, point_timeout=POINT_TIMEOUT_S)
             counts = g.metadata_counts(g.read_metadata(block, WORK))
             if code or counts["n"] != size:
                 state["status"] = f"paused {block}: runner exit {code}; {counts}"

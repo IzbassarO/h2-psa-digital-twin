@@ -312,3 +312,31 @@ use `scripts/run_batch.py` under `caffeinate -i` with checkpoint / resume.
   4 days, plus a pytest job; load average about 6). This is the Step 6a exception; the runner, its flags and its
   pause rules are unchanged (`scripts/run_step6c.py` reuses `run_step6a.run_phase`). Publication is left to the
   user (no git from the agent).
+* **2026-10-14 — Python environment drift and repair.** Homebrew upgraded its Python 3.14 from 3.14.7 to
+  3.14.8 at 2026-10-13 23:47 EDT; the venv followed Homebrew's current Python. The 899 S_nom points finished
+  between 12:18 and 18:47 on 2026-10-13. They all came from the single runner process started at 12:15 under the
+  3.14.7 framework: the log has one launch, and its shutdown warning names the 3.14.7 path. Pool workers are not
+  respawned, and the pinned packages were installed on 10-09 / 10-12. So none of them ran on 3.14.8. Only the
+  resumed hung attempt of S_nom_0590 ran on 3.14.8, and it produced no output (see below). The venv was rebuilt
+  on the exact pinned CPython 3.14.7, independent of Homebrew (uv-managed standalone build,
+  `uv venv --python 3.14.7`). Its packages were installed from the previous venv's `pip freeze`: all 41 versions
+  are identical, including numpy 2.5.3, scipy 1.18.1, pandas 3.0.6, scikit-learn 1.9.1, pymoo 0.6.2 and
+  statsmodels 0.15.0. Check: one cycle from the stored CSS states of S_nom_0000, 0450 and 0899 reproduces the
+  stored impurity within 1.3e-6 relative, i.e. within the CSS tolerance. `brew pin python@3.14` prevents further
+  Homebrew upgrades.
+* **2026-10-14 — per-attempt wall-time limit (new rule, Step 6c).** S_nom_0590 stayed inside its first cycle
+  for about 22 h (2026-10-13 16:00 to 2026-10-14 14:30), with no solver error. The registered failure rule could
+  not trigger, and the runner had no limit. Rule: an attempt whose active wall time, summed over resumes, exceeds
+  2 h is a solver failure (TimeoutError), handled exactly as registered: one retry from the He-filled column
+  (cold, no warm start, frozen tolerances); if the retry also exceeds 2 h or fails, the point is "failed"
+  (section 3). Scope: S_nom_0590 and all of S_dist, applied uniformly (`run_batch.py --point-timeout 7200`).
+  The rule would have changed no earlier result. All 1152 Step 6a points finished in at most 79.3 min (D_train
+  41.1, D_cal 57.2, D_test 79.3, D_shift 77.9 min; none resumed, so these times are complete). The 899 finished
+  S_nom points took at most 9.7 min. The hung first attempt of S_nom_0590 was recorded as timed out by
+  converting its checkpoint to the state the runner's failure branch would have written: attempt 2, cold start,
+  error TimeoutError. Its active time after the last checkpoint was not recorded, and the original checkpoint is
+  kept outside the repository.
+* **2026-10-14 — session interruption.** The Step 6c driver was killed when the agent session ended (S_nom
+  899/900). It was resumed from checkpoints at 04:54 EDT without recomputing finished points, detached from the
+  session (`nohup`), and then stopped again at 14:30 for the two repairs above. Batch wall time excludes the
+  idle gap.

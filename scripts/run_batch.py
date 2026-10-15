@@ -15,6 +15,9 @@ configs/disturbances.yaml (plus `anchor`); missing ones take their defaults (src
 * --blind suppresses all performance labels in logs; --retry-failures retries a
   primary solver failure exactly once from a fresh He-filled column, using the
   frozen numerical settings. Both attempts remain in checkpoint provenance.
+* --point-timeout S: an attempt whose active wall time (summed over resumes) exceeds S seconds is a solver
+  failure (TimeoutError), handled like any other: cold retry with --retry-failures, otherwise "failed"
+  (Step 6c rule, docs/preregistration.md, Deviations 2026-10-14).
 * --failure-limit / --cap-limit pause above fractions of --block-size (or the
   requested size), drain active workers, and exit 3. Submission is bounded by
   --workers so a gate cannot leave the rest of a block queued.
@@ -27,9 +30,11 @@ import json
 import os
 import pickle
 import re
+import signal
 import sys
 import time
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -81,8 +86,28 @@ def _same_point(left: dict, right: dict) -> bool:
     return True
 
 
+@contextmanager
+def time_limit(seconds: float | None):
+    """Raise TimeoutError in this (worker main) thread after `seconds` of wall time; None = no limit."""
+    if seconds is None:
+        yield
+        return
+    if seconds <= 0:
+        raise TimeoutError("attempt wall-time limit already used")
+
+    def expire(signum, frame):
+        raise TimeoutError("attempt exceeded its wall-time limit")
+    previous = signal.signal(signal.SIGALRM, expire)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
 def run_point(pid: str, point: dict, out: Path, max_cycles: int = CSS["max_cycles"], *,
-              blind: bool = False, retry_failures: bool = False) -> str:
+              blind: bool = False, retry_failures: bool = False, timeout_s: float | None = None) -> str:
     """Run/resume a point; optionally retry a primary failure once from a fresh He column.
 
     The cold retry uses the same frozen column, integrator and CSS tolerances. The
@@ -115,6 +140,7 @@ def run_point(pid: str, point: dict, out: Path, max_cycles: int = CSS["max_cycle
     ck = out / "ckpt" / f"{pid}.npz"
     n0, start, original_start, y0 = 0, None, None, None
     elapsed_before, attempt, errors, cycles_prior_attempts = 0.0, 1, [], 0
+    attempt_wall0 = 0.0                                  # active wall time when the current attempt began
     censor_ppm = []
     attempt_start = "cold"
     resumed = ck.exists()
@@ -131,6 +157,7 @@ def run_point(pid: str, point: dict, out: Path, max_cycles: int = CSS["max_cycle
                 attempt_start = meta.get("attempt_start", "cold")
                 errors = meta.get("errors", [])
                 cycles_prior_attempts = int(meta.get("cycles_prior_attempts", 0))
+                attempt_wall0 = float(meta.get("attempt_wall0", 0.0))
                 censor_ppm = d["censor_ppm"].tolist() if "censor_ppm" in d else []
             else:
                 original_start = "unknown (legacy checkpoint)"
@@ -144,7 +171,7 @@ def run_point(pid: str, point: dict, out: Path, max_cycles: int = CSS["max_cycle
     def save_checkpoint(y, n, elapsed):
         meta = dict(point=point, original_start=original_start, attempt_start=attempt_start,
                     attempt=attempt, errors=errors, wall_s=elapsed,
-                    cycles_prior_attempts=cycles_prior_attempts)
+                    cycles_prior_attempts=cycles_prior_attempts, attempt_wall0=attempt_wall0)
         _atomic(ck, lambda fh: np.savez(fh, y=y, n=n, censor_ppm=np.asarray(censor_ppm),
                                        meta=json.dumps(meta, sort_keys=True)))
 
@@ -171,9 +198,10 @@ def run_point(pid: str, point: dict, out: Path, max_cycles: int = CSS["max_cycle
                 save_checkpoint(y, last_n, elapsed_before + time.perf_counter() - t0)
 
         try:
-            res = run.run_to_css(y0=y0, max_cycles=max_cycles - n0, tol=CSS["tol"], tol_ppm=CSS["tol_ppm"],
-                                 accel=True, censor=CENSOR, censor_history=censor_ppm,
-                                 checkpoint=checkpoint, log=log)
+            with time_limit(None if timeout_s is None else timeout_s - (elapsed_before - attempt_wall0)):
+                res = run.run_to_css(y0=y0, max_cycles=max_cycles - n0, tol=CSS["tol"], tol_ppm=CSS["tol_ppm"],
+                                     accel=True, censor=CENSOR, censor_history=censor_ppm,
+                                     checkpoint=checkpoint, log=log)
         except Exception as exc:
             elapsed_before += time.perf_counter() - t0
             last_n = max(last_n, n0 + len(censor_ppm) - history_before)
@@ -183,6 +211,7 @@ def run_point(pid: str, point: dict, out: Path, max_cycles: int = CSS["max_cycle
             if retry_failures and attempt == 1:
                 cycles_prior_attempts += last_n
                 attempt, attempt_start, n0, start, y0, censor_ppm = 2, "cold", 0, None, None, []
+                attempt_wall0 = elapsed_before
                 # Persist the primary failure before a cold retry so monitoring
                 # sees it promptly and an interruption cannot repeat attempt 1.
                 save_checkpoint(m.y0, 0, elapsed_before)
@@ -268,6 +297,7 @@ def main(argv=None):
     ap.add_argument("--retry-failures", action="store_true", help="retry each primary solver failure once from He")
     ap.add_argument("--failure-limit", type=float, help="pause above this primary-failure fraction")
     ap.add_argument("--cap-limit", type=float, help="pause above this cap-hit fraction")
+    ap.add_argument("--point-timeout", type=float, help="per-attempt active wall-time limit [s]")
     ap.add_argument("--block-size", type=int, help="threshold denominator (default: number of requested points)")
     a = ap.parse_args(argv)
     if a.workers < 1 or (a.block_size is not None and a.block_size < 1):
@@ -335,7 +365,8 @@ def main(argv=None):
             r = next(pending, None)
             if r is not None:
                 futs[ex.submit(run_point, r["id"], point_of(r), out,
-                               blind=a.blind, retry_failures=a.retry_failures)] = r["id"]
+                               blind=a.blind, retry_failures=a.retry_failures,
+                               timeout_s=a.point_timeout)] = r["id"]
                 return True
             return False
 
