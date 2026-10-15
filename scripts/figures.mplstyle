@@ -1,0 +1,37 @@
+# Paper figures (scripts/make_figures.py). Journal widths: 90 mm (single column), 190 mm (double column).
+# Colour cycle = Okabe & Ito (2008), colour-blind safe. Fixed roles used by make_figures.py:
+#   C0 P (point estimate, vermillion), C1 G (global split conformal, blue), C2 L (locally adaptive, bluish green);
+#   C3-C6 species / thermocouples in F5-F6 (black, orange, sky blue, reddish purple).
+axes.prop_cycle: cycler('color', ['D55E00', '0072B2', '009E73', '000000', 'E69F00', '56B4E9', 'CC79A7', 'F0E442'])
+
+font.family: sans-serif
+font.sans-serif: DejaVu Sans
+font.size: 7
+axes.titlesize: 7
+axes.labelsize: 7
+xtick.labelsize: 6.5
+ytick.labelsize: 6.5
+legend.fontsize: 6
+legend.title_fontsize: 6
+legend.frameon: False
+mathtext.default: regular
+
+axes.linewidth: 0.6
+axes.spines.top: False
+axes.spines.right: False
+axes.titlelocation: left
+axes.titleweight: bold
+xtick.major.width: 0.6
+ytick.major.width: 0.6
+xtick.major.size: 2.5
+ytick.major.size: 2.5
+lines.linewidth: 1.0
+lines.markersize: 3
+errorbar.capsize: 1.5
+grid.linewidth: 0.4
+
+figure.dpi: 150
+figure.constrained_layout.use: True
+savefig.dpi: 300
+pdf.fonttype: 42
+ps.fonttype: 42
