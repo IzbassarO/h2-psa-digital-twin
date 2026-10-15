@@ -1,0 +1,5 @@
+set,n,css,censored,cap,failed
+baseline,210,210,0,0,0
+ep_inflow_ed_gas,210,210,0,0,0
+thermal_range_low,210,210,0,0,0
+thermal_range_high,210,210,0,0,0
