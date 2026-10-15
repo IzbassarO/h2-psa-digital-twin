@@ -1,0 +1,357 @@
+{
+  "declarations": {
+    "percentiles": "numpy linear interpolation",
+    "holm_ties": "stable RQ1, RQ2, RQ3, RQ5 order",
+    "point_bootstrap_order": "sorted arm IDs, one default_rng(5)",
+    "cluster_bootstrap_order": "RQ1, RQ2, RQ3, RQ5; one default_rng(6)",
+    "logistic_covariance": "cluster robust, use_correction=True, asymptotic normal Wald",
+    "undefined_bootstrap": "any undefined draw leaves percentile bounds undefined; count reported",
+    "failure_policy": "exclude final failures primarily; sensitivity treats them as violations/miscoverage",
+    "duplicates": "one ID per arm; stable first seed supplies cluster; shared IDs retain contributions across arms",
+    "gate_scope": "all primary alpha=0.10 G/L arms; secondary/diagnostic gates reported independently",
+    "bootstrap_RQ3_dependency": "descriptive status follows bootstrap RQ2 verdict",
+    "pool_policy": "per_arm",
+    "draws": 2000
+  },
+  "tests": {
+    "decisions": {
+      "RQ1": {
+        "p_value": 5.4507851837845065e-146,
+        "adjusted_p": 2.1803140735138026e-145,
+        "rank": 1,
+        "level": 0.0125,
+        "verdict": "confirmed"
+      },
+      "RQ2": {
+        "p_value": 2.209258395727894e-35,
+        "adjusted_p": 6.627775187183682e-35,
+        "rank": 2,
+        "level": 0.016666666666666666,
+        "verdict": "confirmed"
+      },
+      "RQ5": {
+        "p_value": 0.00022949733647673203,
+        "adjusted_p": 0.00045899467295346406,
+        "rank": 3,
+        "level": 0.025,
+        "verdict": "confirmed"
+      },
+      "RQ3": {
+        "p_value": 1.0,
+        "adjusted_p": 1.0,
+        "rank": 4,
+        "level": 0.05,
+        "p_a": 1.0,
+        "p_b": 0.9983953293135492,
+        "verdict": "not confirmed"
+      }
+    },
+    "pooled_counts": {
+      "G": {
+        "n": 270,
+        "k": 104,
+        "rate": 0.3851851851851852,
+        "ci_lower": 0.3268337311023583,
+        "ci_upper": 0.44608666818857473,
+        "failed": 0,
+        "sensitivity_n": 270,
+        "sensitivity_k": 104,
+        "sensitivity_rate": 0.3851851851851852,
+        "sensitivity_ci_lower": 0.3268337311023583,
+        "sensitivity_ci_upper": 0.44608666818857473
+      },
+      "L": {
+        "n": 270,
+        "k": 137,
+        "rate": 0.5074074074074074,
+        "ci_lower": 0.4461263808304265,
+        "ci_upper": 0.5685240863144512,
+        "failed": 0,
+        "sensitivity_n": 270,
+        "sensitivity_k": 137,
+        "sensitivity_rate": 0.5074074074074074,
+        "sensitivity_ci_lower": 0.4461263808304265,
+        "sensitivity_ci_upper": 0.5685240863144512
+      },
+      "P": {
+        "n": 179,
+        "k": 165,
+        "rate": 0.9217877094972067,
+        "ci_lower": 0.8722544987163373,
+        "ci_upper": 0.956581849034983,
+        "failed": 1,
+        "sensitivity_n": 180,
+        "sensitivity_k": 166,
+        "sensitivity_rate": 0.9222222222222223,
+        "sensitivity_ci_lower": 0.8729449390367162,
+        "sensitivity_ci_upper": 0.9568268163982807
+      }
+    },
+    "gate_pass": true,
+    "pool_policy": "per_arm"
+  },
+  "failure_sensitivity_tests": {
+    "decisions": {
+      "RQ1": {
+        "p_value": 5.910155693389118e-147,
+        "adjusted_p": 2.3640622773556474e-146,
+        "rank": 1,
+        "level": 0.0125,
+        "verdict": "confirmed"
+      },
+      "RQ2": {
+        "p_value": 2.209258395727894e-35,
+        "adjusted_p": 6.627775187183682e-35,
+        "rank": 2,
+        "level": 0.016666666666666666,
+        "verdict": "confirmed"
+      },
+      "RQ5": {
+        "p_value": 0.00022949733647673203,
+        "adjusted_p": 0.00045899467295346406,
+        "rank": 3,
+        "level": 0.025,
+        "verdict": "confirmed"
+      },
+      "RQ3": {
+        "p_value": 1.0,
+        "adjusted_p": 1.0,
+        "rank": 4,
+        "level": 0.05,
+        "p_a": 1.0,
+        "p_b": 0.9983953293135492,
+        "verdict": "not confirmed"
+      }
+    },
+    "pooled_counts": {
+      "G": {
+        "n": 270,
+        "k": 104,
+        "rate": 0.3851851851851852,
+        "ci_lower": 0.3268337311023583,
+        "ci_upper": 0.44608666818857473,
+        "failed": 0,
+        "sensitivity_n": 270,
+        "sensitivity_k": 104,
+        "sensitivity_rate": 0.3851851851851852,
+        "sensitivity_ci_lower": 0.3268337311023583,
+        "sensitivity_ci_upper": 0.44608666818857473
+      },
+      "L": {
+        "n": 270,
+        "k": 137,
+        "rate": 0.5074074074074074,
+        "ci_lower": 0.4461263808304265,
+        "ci_upper": 0.5685240863144512,
+        "failed": 0,
+        "sensitivity_n": 270,
+        "sensitivity_k": 137,
+        "sensitivity_rate": 0.5074074074074074,
+        "sensitivity_ci_lower": 0.4461263808304265,
+        "sensitivity_ci_upper": 0.5685240863144512
+      },
+      "P": {
+        "n": 180,
+        "k": 166,
+        "rate": 0.9222222222222223,
+        "ci_lower": 0.8729449390367162,
+        "ci_upper": 0.9568268163982807,
+        "failed": 0,
+        "sensitivity_n": 180,
+        "sensitivity_k": 166,
+        "sensitivity_rate": 0.9222222222222223,
+        "sensitivity_ci_lower": 0.8729449390367162,
+        "sensitivity_ci_upper": 0.9568268163982807
+      }
+    },
+    "gate_pass": true,
+    "pool_policy": "per_arm"
+  },
+  "logistic": {
+    "status": "defined",
+    "n": 692,
+    "n_clusters": 140,
+    "b_phi": -1.5673244065246392,
+    "coefficients": [
+      {
+        "term": "intercept_D_shift",
+        "estimate": -1.466502038881346,
+        "se": 0.4968655527143689,
+        "lower": -2.4403406273600967,
+        "upper": -0.4926634504025952
+      },
+      {
+        "term": "intercept_S_dist",
+        "estimate": -0.30216916708809827,
+        "se": 0.5389636982334661,
+        "lower": -1.358518604600206,
+        "upper": 0.7541802704240094
+      },
+      {
+        "term": "L",
+        "estimate": 0.16332131017344959,
+        "se": 0.291830633680416,
+        "lower": -0.40865622142566743,
+        "upper": 0.7352988417725665
+      },
+      {
+        "term": "GBM",
+        "estimate": 0.6917637194676826,
+        "se": 0.33590733785731086,
+        "lower": 0.03339743512462545,
+        "upper": 1.3501300038107398
+      },
+      {
+        "term": "b_phi",
+        "estimate": -1.5673244065246392,
+        "se": 0.4473453928874753,
+        "lower": -2.444105265234011,
+        "upper": -0.6905435478152672
+      },
+      {
+        "term": "b_CH4",
+        "estimate": 0.5856764086701888,
+        "se": 0.41556035335216474,
+        "lower": -0.2288069173027928,
+        "upper": 1.4001597346431702
+      },
+      {
+        "term": "b_CO",
+        "estimate": 0.16297478635333437,
+        "se": 0.4240962136079844,
+        "lower": -0.6682385182981205,
+        "upper": 0.9941880910047893
+      }
+    ],
+    "p_value": 0.00022949733647673203,
+    "b_phi_lower": -2.444105265234011,
+    "b_phi_upper": -0.6905435478152672,
+    "odds_ratio": 4.793804746812977,
+    "odds_ratio_lower": 1.994799507534682,
+    "odds_ratio_upper": 11.52023742925808
+  },
+  "failure_sensitivity_logistic": {
+    "status": "defined",
+    "n": 692,
+    "n_clusters": 140,
+    "b_phi": -1.5673244065246392,
+    "coefficients": [
+      {
+        "term": "intercept_D_shift",
+        "estimate": -1.466502038881346,
+        "se": 0.4968655527143689,
+        "lower": -2.4403406273600967,
+        "upper": -0.4926634504025952
+      },
+      {
+        "term": "intercept_S_dist",
+        "estimate": -0.30216916708809827,
+        "se": 0.5389636982334661,
+        "lower": -1.358518604600206,
+        "upper": 0.7541802704240094
+      },
+      {
+        "term": "L",
+        "estimate": 0.16332131017344959,
+        "se": 0.291830633680416,
+        "lower": -0.40865622142566743,
+        "upper": 0.7352988417725665
+      },
+      {
+        "term": "GBM",
+        "estimate": 0.6917637194676826,
+        "se": 0.33590733785731086,
+        "lower": 0.03339743512462545,
+        "upper": 1.3501300038107398
+      },
+      {
+        "term": "b_phi",
+        "estimate": -1.5673244065246392,
+        "se": 0.4473453928874753,
+        "lower": -2.444105265234011,
+        "upper": -0.6905435478152672
+      },
+      {
+        "term": "b_CH4",
+        "estimate": 0.5856764086701888,
+        "se": 0.41556035335216474,
+        "lower": -0.2288069173027928,
+        "upper": 1.4001597346431702
+      },
+      {
+        "term": "b_CO",
+        "estimate": 0.16297478635333437,
+        "se": 0.4240962136079844,
+        "lower": -0.6682385182981205,
+        "upper": 0.9941880910047893
+      }
+    ],
+    "p_value": 0.00022949733647673203,
+    "b_phi_lower": -2.444105265234011,
+    "b_phi_upper": -0.6905435478152672,
+    "odds_ratio": 4.793804746812977,
+    "odds_ratio_lower": 1.994799507534682,
+    "odds_ratio_upper": 11.52023742925808
+  },
+  "mcnemar": {
+    "n": 240,
+    "nominal_violations": 107,
+    "disturbed_violations": 135,
+    "increase": 29,
+    "decrease": 1,
+    "p_value": 2.8870999813079834e-08,
+    "failed_pairs": 0,
+    "sensitivity": {
+      "n": 240,
+      "nominal_violations": 107,
+      "disturbed_violations": 135,
+      "increase": 29,
+      "decrease": 1,
+      "p_value": 2.8870999813079834e-08
+    }
+  },
+  "robustness": {
+    "RQ1": {
+      "lower": 0.8268156424581006,
+      "undefined_draws": 0,
+      "n_clusters": 18,
+      "verdict": "confirmed",
+      "draws": 2000,
+      "level": 0.0125,
+      "primary_verdict": "confirmed",
+      "robustness": "robust"
+    },
+    "RQ2": {
+      "lower": 0.23080246913580246,
+      "undefined_draws": 0,
+      "n_clusters": 18,
+      "verdict": "confirmed",
+      "draws": 2000,
+      "level": 0.016666666666666666,
+      "primary_verdict": "confirmed",
+      "robustness": "robust"
+    },
+    "RQ3": {
+      "L_upper": 0.6814814814814815,
+      "difference_lower": -0.3296296296296296,
+      "undefined_draws": 0,
+      "n_clusters": 18,
+      "verdict": "not confirmed",
+      "draws": 2000,
+      "level": 0.05,
+      "primary_verdict": "not confirmed",
+      "robustness": "robust"
+    },
+    "RQ5": {
+      "upper": -0.6948974151056747,
+      "undefined_draws": 0,
+      "n_shift_clusters": 128,
+      "n_dist_clusters": 12,
+      "verdict": "confirmed",
+      "draws": 2000,
+      "level": 0.025,
+      "primary_verdict": "confirmed",
+      "robustness": "robust"
+    }
+  }
+}

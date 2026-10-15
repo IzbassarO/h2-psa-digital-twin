@@ -1,0 +1,7 @@
+set,n,css,censored,cap,failed,successful_retries
+D_train,512,432,80,0,0,0
+D_cal,256,215,41,0,0,0
+D_test,256,214,41,1,0,0
+D_shift,128,112,16,0,0,0
+S_nom,900,837,62,0,1,0
+S_dist,240,216,24,0,0,0
