@@ -540,12 +540,13 @@ def hy2seps_transport(kind: str, y: dict, T: float, P: float, u0: float, d_wi: f
                         eps=ph["bed_porosity_ch3"], d_wi=d_wi, e_wall=e_wall, L=L, tau=ph["tortuosity"], dax=dax)
 
 
-def hy2seps_layer(kind: str, length: float, tr: dict, phi: float = 1.0) -> Layer:
+def hy2seps_layer(kind: str, length: float, tr: dict, phi: float = 1.0, Cps: float | None = None) -> Layer:
     """HY2SEPS-AC ("AC") or HY2SEPS-ZEO ("ZEO") layer: multisite Langmuir (Tables 2.7, 2.8), micropore/crystal
     kinetics refitted to the measured Dc/rc2 (Tables 3.12, 3.15; errata E5 convention), particle properties
     (Tables 3.10, 3.13), transport coefficients `tr` (Dax, lambda, kf, hf, hw, U, Dp per species).
     phi: adsorbent capacity factor (step-5 disturbance, ageing / contamination) multiplying q_max of every species;
-    K and the number of sites a are kept, so the multisite-Langmuir loadings scale exactly by phi."""
+    K and the number of sites a are kept, so the multisite-Langmuir loadings scale exactly by phi.
+    Cps: solid heat capacity [J kg-1 K-1] (None: the YAML value; Step 7b thermal scenarios)."""
     from .isotherms import MultisiteLangmuir
     d = load_yaml(PARAMS / HY2SEPS[kind])
     ph = d["physical"]
@@ -559,18 +560,19 @@ def hy2seps_layer(kind: str, length: float, tr: dict, phi: float = 1.0) -> Layer
     return Layer(length=length, eps=ph["bed_porosity_ch3"], iso=iso,
                  rho_p=ph["particle_density"], eps_p=ph["pellet_porosity"], Rp=Rp,
                  Omega_m=ph["ldf_factor_macropore"], Omega_c=ph["ldf_factor_micropore"],
-                 Cps=ph["solid_heat_capacity"]["value"], a_p=asm["particle_specific_area"]["value"] / Rp,
+                 Cps=ph["solid_heat_capacity"]["value"] if Cps is None else Cps, a_p=asm["particle_specific_area"]["value"] / Rp,
                  kf=tr["kf"], hf=tr["hf"], Dp=tr["Dp"], Dc0={k: v[0] for k, v in mic.items()},
                  Ea={k: v[1] for k, v in mic.items()}, Dax=tr["Dax"], lam=tr["lambda"], hw=tr["hw"], U=tr["U"])
 
 
 def layered_column(f_ac: float, y: dict, T: float, P: float, flow: float, species: list, *, L: float, d_wi: float,
                    e_wall: float, Cw: float, T_amb: float, dax: str = "eq3.18", transport: dict | None = None,
-                   wall: tuple | None = None, phi: float = 1.0) -> Column:
+                   wall: tuple | None = None, phi: float = 1.0, Cps: dict | None = None) -> Column:
     """HY2SEPS-AC (feed end, fraction f_ac of the bed length L) + HY2SEPS-ZEO (product end). Transport
     coefficients per layer from the correlations at the feed conditions, unless `transport` gives
     {"AC": tr, "ZEO": tr} explicitly. wall: (h_w, U) [W m-2 K-1] of the geometry's own source for every layer
     (step-4 rule; None: the correlations 5.31 and 5.29). phi: capacity factor of both layers (hy2seps_layer).
+    Cps: {"AC": ..., "ZEO": ...} solid heat capacities overriding the YAML values (hy2seps_layer).
     Zero-length layers are dropped."""
     u0 = flow * R * T / (P * np.pi * d_wi**2 / 4)
     layers = []
@@ -580,6 +582,6 @@ def layered_column(f_ac: float, y: dict, T: float, P: float, flow: float, specie
         tr = (transport or {}).get(kind) or hy2seps_transport(kind, y, T, P, u0, d_wi, e_wall, L, species, dax)
         if wall is not None:
             tr = {**tr, "hw": wall[0], "U": wall[1]}
-        layers.append(hy2seps_layer(kind, length, tr, phi))
+        layers.append(hy2seps_layer(kind, length, tr, phi, (Cps or {}).get(kind)))
     l0 = layers[0]
     return Column(d_wi=d_wi, e_wall=e_wall, Cw=Cw, Dax=l0.Dax, lam=l0.lam, hw=l0.hw, U=l0.U, T_amb=T_amb, layers=layers)

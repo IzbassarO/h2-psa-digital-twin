@@ -4,6 +4,8 @@ Decision variables: configs/design_space.yaml; disturbances (capacity factor phi
 configs/disturbances.yaml. A point is a dict with any of those names (pressures in bar, as in the configs);
 missing names take the experiment's value (Table 5.4, frozen step-3 cycle) or the nominal disturbance, so
 build({"f_zeolite": 0.4}) is the step-4 baseline case base_f0.6_t101.
+Optional key "scenario": a Step 7b model-form scenario (SCENARIOS; docs/preregistration.md, Addendum A); absent =
+the frozen baseline.
 """
 from __future__ import annotations
 
@@ -18,6 +20,7 @@ from .isotherms import load_yaml
 
 CONFIGS = Path(__file__).resolve().parents[2] / "configs"
 N_CELLS = 30
+SCENARIOS = ("ep_inflow_ed_gas", "thermal_range_low", "thermal_range_high")
 
 
 def anchor_feed(anchor: str = "lopes") -> dict:
@@ -49,6 +52,24 @@ def feed_composition(anchor: str = "lopes", y_CH4: float | None = None, y_CO: fl
     return y
 
 
+def scenario_settings(name: str | None) -> tuple[dict, dict | None, float | None]:
+    """(cycle overrides, solid heat capacity per layer, wall heat capacity per length) of a Step 7b scenario.
+    ep_inflow_ed_gas: EP inflow = gas of the matching ED step (step-3 scenario; beta_P unchanged).
+    thermal_range_low / _high: both layers' Cps and the wall at the ends of their assumed ranges, applied as in
+    step 3 (Cw of the end wall thickness, e_wall kept; scripts/run_psa.py band_thermal_*). None: baseline."""
+    if name is None:
+        return {}, None, None
+    if name == "ep_inflow_ed_gas":
+        return {"ep_gas": "ed"}, None, None
+    if name in ("thermal_range_low", "thermal_range_high"):
+        end = 0 if name == "thermal_range_low" else 1
+        cps = {k: load_yaml(PARAMS / f)["physical"]["solid_heat_capacity"]["range"][end]
+               for k, f in (("AC", "hy2seps_ac_lopes2010.yaml"), ("ZEO", "hy2seps_zeo_lopes2010.yaml"))}
+        e = load_yaml(PARAMS / "compact_column_lopes2010.yaml")["assumed"]["wall_thickness"]["range"][end]
+        return {}, cps, wall_heat_capacity(e)
+    raise ValueError(f"unknown scenario {name!r}; expected one of {SCENARIOS}")
+
+
 def compact_geometry() -> dict:
     cc = load_yaml(PARAMS / "compact_column_lopes2010.yaml")
     e = cc["assumed"]["wall_thickness"]["value"]
@@ -58,7 +79,8 @@ def compact_geometry() -> dict:
 def build(point: dict, N: int = N_CELLS):
     """(Cycle, ColumnModel, adsorbent mass [kg]) of a design point (see module docstring)."""
     p = point
-    c = experiment_cycle()
+    cycle_over, Cps, Cw = scenario_settings(p.get("scenario"))
+    c = replace(experiment_cycle(), **cycle_over)
     y = feed_composition(p.get("anchor", "lopes"), p.get("y_CH4"), p.get("y_CO"))
     P_high = p.get("P_high", c.P_high / 1e5) * 1e5
     P_low = p.get("P_low", c.P_low / 1e5) * 1e5
@@ -74,8 +96,9 @@ def build(point: dict, N: int = N_CELLS):
         raise ValueError(f"f_zeolite = {fz} is not a multiple of 1/{N} (layer interface off a cell face)")
     tr = load_yaml(PARAMS / "ac5ks_lopes2010.yaml")["psa_transport"]["groups"]["1-4"]   # h_w, U of the apparatus
     sp = list(y) + ["He"]
+    geometry = {**compact_geometry(), **({} if Cw is None else {"Cw": Cw})}
     col = layered_column(1.0 - k / N, y, c.T_feed, c.P_high, c.feed_flow, sp, T_amb=c.T_feed, dax="eq3.18",
-                         wall=(tr["hw"], tr["U"]), phi=p.get("phi", 1.0), **compact_geometry())
+                         wall=(tr["hw"], tr["U"]), phi=p.get("phi", 1.0), Cps=Cps, **geometry)
     m = psa_model(c, N=N, column=col)
     return c, m, float((m.A * m.dz * (1 - m.eps) * m.rho_p).sum())
 

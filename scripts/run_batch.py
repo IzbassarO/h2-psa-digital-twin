@@ -18,6 +18,7 @@ configs/disturbances.yaml (plus `anchor`); missing ones take their defaults (src
 * --point-timeout S: an attempt whose active wall time (summed over resumes) exceeds S seconds is a solver
   failure (TimeoutError), handled like any other: cold retry with --retry-failures, otherwise "failed"
   (Step 6c rule, docs/preregistration.md, Deviations 2026-10-14).
+* --cold-start: every new point starts from the He-filled column (no neighbour warm start; Step 7b spot check).
 * --failure-limit / --cap-limit pause above fractions of --block-size (or the
   requested size), drain active workers, and exit 3. Submission is bounded by
   --workers so a gate cannot leave the rest of a block queued.
@@ -107,7 +108,8 @@ def time_limit(seconds: float | None):
 
 
 def run_point(pid: str, point: dict, out: Path, max_cycles: int = CSS["max_cycles"], *,
-              blind: bool = False, retry_failures: bool = False, timeout_s: float | None = None) -> str:
+              blind: bool = False, retry_failures: bool = False, timeout_s: float | None = None,
+              cold_start: bool = False) -> str:
     """Run/resume a point; optionally retry a primary failure once from a fresh He column.
 
     The cold retry uses the same frozen column, integrator and CSS tolerances. The
@@ -163,7 +165,7 @@ def run_point(pid: str, point: dict, out: Path, max_cycles: int = CSS["max_cycle
                 original_start = "unknown (legacy checkpoint)"
                 announce("legacy checkpoint: prior wall time and censor history unavailable")
     else:
-        seed = nearest_state(point, out / "css_states")
+        seed = None if cold_start else nearest_state(point, out / "css_states")
         y0, start = (None, None) if seed is None else (seed[2], seed[1])
         original_start = start
         attempt_start = start or "cold"
@@ -298,6 +300,7 @@ def main(argv=None):
     ap.add_argument("--failure-limit", type=float, help="pause above this primary-failure fraction")
     ap.add_argument("--cap-limit", type=float, help="pause above this cap-hit fraction")
     ap.add_argument("--point-timeout", type=float, help="per-attempt active wall-time limit [s]")
+    ap.add_argument("--cold-start", action="store_true", help="no neighbour warm start for new points")
     ap.add_argument("--block-size", type=int, help="threshold denominator (default: number of requested points)")
     a = ap.parse_args(argv)
     if a.workers < 1 or (a.block_size is not None and a.block_size < 1):
@@ -366,7 +369,7 @@ def main(argv=None):
             if r is not None:
                 futs[ex.submit(run_point, r["id"], point_of(r), out,
                                blind=a.blind, retry_failures=a.retry_failures,
-                               timeout_s=a.point_timeout)] = r["id"]
+                               timeout_s=a.point_timeout, cold_start=a.cold_start)] = r["id"]
                 return True
             return False
 

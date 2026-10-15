@@ -256,7 +256,7 @@ def save_report(state: dict, work_root: Path = WORK):
 
 
 def run_phase(phase: str, block: str, workers: int, state: dict, work_root: Path = WORK,
-              point_timeout: float | None = None):
+              point_timeout: float | None = None, cold_start: bool = False):
     inputs = work_root / "inputs" / ("D_train_pilot.csv" if phase == "pilot" else f"{block}.csv")
     out = work_root / block
     out.mkdir(parents=True, exist_ok=True)
@@ -265,6 +265,8 @@ def run_phase(phase: str, block: str, workers: int, state: dict, work_root: Path
                "--cap-limit", "0.05", "--block-size", str(32 if phase == "pilot" else SIZES[block])]
     if point_timeout is not None:                        # Step 6c only (Deviations 2026-10-14)
         command += ["--point-timeout", str(point_timeout)]
+    if cold_start:                                       # Step 7b spot check only
+        command += ["--cold-start"]
     env = os.environ.copy()
     env.update(OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", MKL_NUM_THREADS="1", VECLIB_MAXIMUM_THREADS="1",
                NUMEXPR_NUM_THREADS="1", PYTHONUNBUFFERED="1")

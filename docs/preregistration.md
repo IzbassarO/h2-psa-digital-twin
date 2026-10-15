@@ -340,3 +340,68 @@ use `scripts/run_batch.py` under `caffeinate -i` with checkpoint / resume.
   899/900). It was resumed from checkpoints at 04:54 EDT without recomputing finished points, detached from the
   session (`nohup`), and then stopped again at 14:30 for the two repairs above. Batch wall time excludes the
   idle gap.
+
+## Addendum A (2026-10-14) — Step 7b model-form robustness (DESCRIPTIVE; designed after the Step 6c results)
+
+Decided by the project lead on 2026-10-14, after the Step 6c results were seen. This addendum leaves sections 1-9
+and the Step 6c results unchanged. Its analysis is **descriptive**: no hypothesis, no multiplicity correction and
+no confirmatory language. This addendum and its scripts are committed before any Step 7b simulation runs.
+
+* **Question.** How do the violation rate, the coverage of the frozen bounds and the realised fronts of the selected
+  points change when the physical model's form changes within the declared uncertainty set carried from steps 3 and 4
+  (`configs/design_space.yaml: scenarios_carried_to_step7`)?
+* **Scenarios run** (`h2psa.design.SCENARIOS`, set per point by the optional `scenario` key of `design.build`):
+  * `ep_inflow_ed_gas`: the EP inflow is the gas of the matching ED step (ED1 -> EP1, ...) instead of pure H2.
+    beta_P is unchanged, as in the step-3 scenario `band_ep_gas_h2`.
+  * `thermal_range_low` / `thermal_range_high`: both layers' solid heat capacity and the wall heat capacity at the
+    ends of their assumed ranges, applied as in step 3 (`scripts/run_psa.py` band_thermal_*). Values:
+    - Cps of HY2SEPS-AC: 700 / 1100 J kg-1 K-1 (`hy2seps_ac_lopes2010.yaml`).
+    - Cps of HY2SEPS-ZEO: 800 / 1100 J kg-1 K-1 (`hy2seps_zeo_lopes2010.yaml`).
+    - Wall heat capacity per length: `wall_heat_capacity(e)` with e = 2 / 5 mm, e_wall kept at 3 mm
+      (`compact_column_lopes2010.yaml`).
+* **Scenarios dropped**, with reasons:
+  * `noncompetitive_h2`: this mixing rule belongs to the step-3 virial isotherm of AC5-KS. The layered adsorbents use
+    the multisite Langmuir model, which has no such rule. Defining a new layered model form after seeing the results
+    is not justified.
+  * `kinetics_table4.10`: Table 4.10 gives the measured kinetics of AC5-KS only. The layered adsorbents already use
+    their own measured kinetics (Tables 3.12, 3.15; step 4), so the scenario does not apply.
+* **Points:** the 210 selected S_nom points of the GP arms at n_train = 512, with unchanged IDs: P (30), G (45) and L
+  (45) at alpha = 0.10, and G (45) and L (45) at alpha = 0.05. The baseline is their Step 6c S_nom labels, not
+  rerun.
+* **Runs:** 3 scenarios x 210 = 630, plus the spot checks, 3 x 10 = 30. Total 660 CSS runs; estimated 6 h on
+  6 workers (range 5 to 9 h).
+* **Runner:** `scripts/run_step7b.py --workers 6` under `caffeinate -i`, detached with `nohup`, with
+  `HOMEBREW_NO_AUTO_UPDATE=1`, on the uv CPython 3.14.7 venv. It reuses `run_step6a.run_phase` with the Step 6c rules:
+  blind monitoring, a once-only He retry, a pause at 2 % failures or 5 % cap hits, and `--point-timeout 7200` per
+  attempt. Checkpoint / resume. Order: for each scenario, the 210-point block, then its spot check. Labels go to
+  `data/generated/M_<scenario>.csv` and `M_<scenario>_cold.csv`.
+* **Warm start:**
+  * Each point starts from its own baseline CSS state (`results/step6c/S_nom/css_states`). The runner checks it is
+    at distance 0, so it is the nearest state.
+  * CSS is declared only after >= 10 plain cycles, as before.
+* **Spot check:**
+  * Per scenario, 10 points drawn with `numpy.random.default_rng(7)` (one stream, scenarios in the order above) are
+    rerun from the He-filled column (`run_batch.py --cold-start`, new flag).
+  * If any |z_cold - z_warm| > 0.01, or a run on either side failed, the workflow pauses and is reported before the
+    next scenario.
+* **Code changes** (tests in `tests/test_step7b.py`):
+  * the `scenario` key and `design.scenario_settings`;
+  * a `Cps` argument of `column.hy2seps_layer` / `layered_column`;
+  * `run_batch.py --cold-start`;
+  * a `cold_start` pass-through in `run_step6a.run_phase`.
+  * Regression: without a scenario, the layered model rerun from its recorded warm start reproduces the Step 6c
+    label of S_nom_0333 and its final state bitwise.
+* **Analysis:** `python scripts/analyse_step7b.py [--generated-dir data/generated] [--out results/step7b/analysis]`.
+  * Inputs: `S_nom.csv`, `M_<scenario>.csv`, `M_<scenario>_cold.csv`, `S_nom_memberships.csv`, the frozen
+    `docs/validation/step6b/predictions/S_nom.csv`, and `results/step7b/workflow.json` (run status).
+  * Outputs: `violations.csv`, `paired.csv`, `coverage.csv`, `fronts.csv`, `recovery_loss.csv`,
+    `spot_checks.csv`, `statuses.csv` and `REPORT.md`. With the default `--out` these are copied to
+    `docs/validation/step7b.md` and `docs/validation/step7b/`.
+  * Violation rate (z > 2; censored = 3; failed runs excluded and counted) per arm (variant x alpha) for baseline
+    and each scenario, with Clopper-Pearson 95 % CIs.
+  * Paired baseline -> scenario changes on the same points, with the exact McNemar two-sided p reported as
+    descriptive.
+  * Coverage of the frozen nominal bounds (z <= bound; for P, the point prediction).
+  * Step-7a fronts: reference point (recovery 0 %, productivity 0). Per arm: feasible points, realised front and
+    hypervolume. Recovery at productivity 100, 125, ..., 250 mol/kg/day, interpolated on the realised front; loss
+    vs P in the same scenario and change vs the same arm at baseline.
