@@ -61,18 +61,22 @@ CAPTIONS = {
     "F6": "PSA cycle validation (experiment cycle, frozen baseline model): pressure at the open column end in "
           "cycle 1 and thermocouple temperatures over cycles 1-10 and in cycle 37; lines: model, symbols: measured "
           "(Lopes 2010, Figs 5.18-5.19).",
-    "F7": "Predicted bound vs re-simulated impurity z = log10(ppm) of the optimiser-selected points (GP, n_train = 512, "
-          "alpha = 0.10) for P, G and L (CP: conformal prediction); dashed: 100 ppm limit, dotted: median surrogate mean "
-          "prediction; filled: violations. Right: violation "
+    "F7": "Upper bound on z (P: point prediction) vs re-simulated impurity z = log10(ppm) of the optimiser-selected "
+          "points (GP, n_train = 256, alpha = 0.10) for P, G and L (CP: conformal prediction); dashed: 100 ppm limit, "
+          "dotted: median surrogate mean prediction; filled: violations. Right: violation "
           "rate with Clopper-Pearson 95 % CI, pooled per variant (Step 6c, pre-registered) and per surrogate "
           "(Step 6d, exploratory).",
+    "FS7": "As Fig. F7 a-c for GP, n_train = 512, alpha = 0.10.",
     "F8": "Mechanism: (a) GP-L predictive sigma and (b) GBM-L quantile-minus-mean gap Qhat_(1-alpha) - mean at the "
           "selected points vs the random D_test points (alpha = 0.10; Step 6d, exploratory).",
     "F9": "Cost of the guarantee (Step 7a, exploratory, fixed reference point (0, 0)): (a) realised fronts of P, G and "
           "L (GP, n_train = 512, alpha = 0.10) and the best-known front; (b) H2 recovery loss of G and L vs the "
-          "oracle-filtered P front at matched productivity.",
-    "F10": "Robustness: (a) violation rate vs adsorbent capacity factor phi on S_dist (Step 6c; binned, CP 95 % CI) "
-           "with the RQ5 logistic miscoverage fit; (b) violation rate of the GP n_train = 512 selected points under the "
+          "oracle-filtered P front at matched productivity (an upper bound on the cost); dotted: the G / L front lies below "
+          "its lowest realised productivity and its recovery is held at that point's value; left of the vertical line "
+          "the P front is held likewise.",
+    "F10": "Robustness: (a) miscoverage (z > bound) of the G and L arms (n_train = 512, alpha = 0.10) vs adsorbent "
+           "capacity factor phi on S_dist (Step 6c; binned, Clopper-Pearson 95 % CI) with the RQ5 logistic fit "
+           "(S_dist intercept, CH4 and CO fractions at their S_dist means); (b) violation rate of the GP n_train = 512 selected points under the "
            "Step 7b model-form scenarios (descriptive).",
 }
 
@@ -169,13 +173,14 @@ def f5(out):
                      pd.DataFrame(dict(panel=f"T run {run}", source="experiment", series=s, x=g["time_s"],
                                        y=g["temperature_K"]))]
         ax.set_xlabel("time (s)")
-        if run == 1:
-            ax.legend(title="thermocouple (line: model)", loc="upper right")
     axs[0, 0].set_ylabel("outlet / feed molar flow (-)")
     axs[1, 0].set_ylabel("temperature (K)")
     axs[0, 0].set_xlim(0, 3000)
+    fig.suptitle("AC5-KS single-adsorbent column (Lopes 2010)", fontweight="bold")
     fig.legend([Line2D([], [], color=SPECIES[s], marker=MARKER[s], mfc="none", ms=3, lw=0.8) for s in SPECIES],
-               list(SPECIES), loc="outside upper center", ncol=5, title="lines: model, symbols: experiment")
+               list(SPECIES), loc="outside lower left", ncol=5, title="species (lines: model, symbols: experiment)")
+    fig.legend(*axs[1, 0].get_legend_handles_labels(), loc="outside lower right", ncol=3,
+               title="thermocouple (line: model, dots: experiment)")
     save(fig, "F5_breakthrough_validation", out)
     return pd.concat(data, ignore_index=True)
 
@@ -229,14 +234,16 @@ def f6(out):
 
 
 # ---------------------------------------------------------------------------- F7: key figure
-def f7(out):
+def f7(out, n=256, name="F7_bound_vs_resimulated"):
+    """Panels a-c: GP n_train = n, alpha = 0.10; panel d (violation rates) only in the main figure (n = 256)."""
     sel = selected()
-    fig = plt.figure(figsize=(DOUBLE, 58 * MM))
-    gs = fig.add_gridspec(1, 4, width_ratios=(1, 1, 1, 1.5))
+    rates_panel = n == 256
+    fig = plt.figure(figsize=(DOUBLE if rates_panel else DOUBLE * 0.65, 58 * MM))
+    gs = fig.add_gridspec(1, 4 if rates_panel else 3, width_ratios=(1, 1, 1, 1.5) if rates_panel else (1, 1, 1))
     data, first = [], None
-    xlim, ylim = (1.975, 2.003), (0.6, 3.0)       # every selected bound lies in [1.979, 2.000]
+    xlim, ylim = (1.975, 2.003), (0.6, 3.0)       # every selected GP bound (n = 256, 512) lies in [1.979, 2.000]
     for i, v in enumerate("PGL"):
-        g = sel.loc[sel["arm"] == f"GP_n512_{v}_a0.10"]
+        g = sel.loc[sel["arm"] == f"GP_n{n}_{v}_a0.10"]
         bad = g["z"] > 2.0
         ax = fig.add_subplot(gs[i], sharex=first, sharey=first)
         first = first or ax
@@ -251,13 +258,17 @@ def f7(out):
                    label="violation")
         ax.text(0.04, 0.96, f"{int(bad.sum())}/{len(g)} violate", transform=ax.transAxes, va="top")
         ax.text(xlim[0] + 0.001, 2.03, "100 ppm", va="bottom", fontsize=6, color="0.25")
-        ax.set(xlim=xlim, ylim=ylim, xlabel="predicted bound, log10 ppm", xticks=(1.98, 1.99, 2.0))
+        ax.set(xlim=xlim, ylim=ylim, xticks=(1.98, 1.99, 2.0),     # one label, centred under panels a-c
+               xlabel="upper bound on z (P: point prediction), log10 ppm" if i == 1 else "")
         ax.set_ylabel("re-simulated z, log10 ppm" if i == 0 else "")
         if i:
             ax.tick_params(labelleft=False)
         label(ax, f"({'abc'[i]}) {v}, {SHORT_NAME[v]}")
         data.append(g[["id", "arm", "variant", "bound", "z_hat", "z", "status"]].assign(panel=f"scatter {v}",
                                                                                           violation=bad))
+    if not rates_panel:
+        save(fig, name, out)
+        return pd.concat(data, ignore_index=True)
     ax = fig.add_subplot(gs[3])
     rows = []
     for x, (_, r) in enumerate(read(C6 / "pooled_violations.csv").iterrows()):
@@ -282,7 +293,7 @@ def f7(out):
     for x in (2.85, 6.25):
         ax.axvline(x, color="0.85", lw=0.5)
     label(ax, "(d) violation rate, alpha = 0.10")
-    save(fig, "F7_bound_vs_resimulated", out)
+    save(fig, name, out)
     return pd.concat([*data, rates], ignore_index=True)
 
 
@@ -359,16 +370,27 @@ def f9(out):
     ax.legend(loc="lower left")
     label(ax, "(a) realised fronts, GP n = 512, alpha = 0.10")
     ax = axs[1]
+    lowest = fronts.groupby("arm")["productivity"].min()
     for v in "GL":
         for a, ls, filled in ((0.10, "-", True), (0.05, "--", False)):
             arm = f"GP_n512_{v}_a{a:.2f}"
-            g = loss.loc[loss["arm"] == arm]
-            ax.plot(g["productivity"], g["loss_vs_P"], ls, marker="o", color=VARIANT[v], ms=3,
+            g = loss.loc[(loss["arm"] == arm) & loss["loss_vs_P"].notna()].sort_values("productivity")
+            # below the front's lowest productivity its recovery is held at that point's value (explore_step7a.py)
+            held = g["productivity"] < lowest[arm]
+            k = int(held.sum())
+            ax.plot(g["productivity"][:k], g["loss_vs_P"][:k], ":", color=VARIANT[v], lw=0.9)
+            ax.plot(g["productivity"][max(k - 1, 0):], g["loss_vs_P"][max(k - 1, 0):], ls, color=VARIANT[v])
+            ax.plot(g["productivity"], g["loss_vs_P"], "o", color=VARIANT[v], ms=3,
                     mfc=VARIANT[v] if filled else "white", label=f"{v}, alpha = {a:.2f}")
-            data.append(g.assign(panel="loss vs P", series=arm))
-    ax.set(xlabel=r"productivity (mol H$_2$ kg$^{-1}$ day$^{-1}$)", ylabel="recovery loss vs P (pp)", ylim=(0, None))
-    ax.legend(loc="upper left")
-    label(ax, "(b) recovery loss at matched productivity")
+            data.append(g.assign(panel="loss vs P", series=arm, held_constant=held))
+    p_low = lowest["GP_n512_P_a0.10"]
+    ax.axvline(p_low, color="0.6", lw=0.6, ls=":")
+    ax.text(p_low - 2, 0.3, "P front held\nconstant to the left", ha="right", va="bottom", fontsize=5.5, color="0.45")
+    ax.set(xlabel=r"productivity (mol H$_2$ kg$^{-1}$ day$^{-1}$)", ylabel="recovery loss vs P (pp)", ylim=(0, 13.5))
+    handles, labels_ = ax.get_legend_handles_labels()
+    ax.legend([*handles, Line2D([], [], ls=":", color="0.4", lw=0.9)],
+              [*labels_, "G / L front held constant\n(below its lowest productivity)"], loc="upper left")
+    label(ax, "(b) loss vs oracle-filtered P (upper bound)")
     save(fig, "F9_cost_of_guarantee", out)
     return pd.concat(data, ignore_index=True)
 
@@ -380,18 +402,20 @@ def f10(out):
     fig, axs = plt.subplots(1, 2, figsize=(DOUBLE, 72 * MM), gridspec_kw=dict(width_ratios=(1, 1.15)))
     ax = axs[0]
     rows = []
-    sd["bin"] = pd.cut(sd["phi"], PHI_BINS, include_lowest=True)
-    for i, v in enumerate("PGL"):
-        for interval, g in sd.loc[sd["variant"] == v].groupby("bin", observed=False):
-            rows.append(dict(panel="S_dist binned", variant=v, phi_lower=interval.left, phi_upper=interval.right,
-                             x=interval.mid + (i - 1) * 0.012, **cp((g["z"] > 2.0).sum(), len(g))))
+    # the rows of the RQ5 fit on S_dist (h2psa.step6_metrics.shift_regression_rows): G, L, n_train = 512, alpha = 0.10
+    gl = sd.loc[sd["variant"].isin(("G", "L")) & sd["n_train"].eq(512) & np.isclose(sd["alpha"], 0.10)].copy()
+    gl["bin"] = pd.cut(gl["phi"], PHI_BINS, include_lowest=True)
+    for i, v in enumerate("GL"):
+        for interval, g in gl.loc[gl["variant"] == v].groupby("bin", observed=False):
+            rows.append(dict(panel="S_dist binned miscoverage", variant=v, phi_lower=interval.left,
+                             phi_upper=interval.right, x=interval.mid + (i - 0.5) * 0.012,
+                             **cp((g["z"] > g["bound"]).sum(), len(g))))
     binned = pd.DataFrame(rows)
-    for v in "PGL":
+    for v in "GL":
         b = binned.loc[binned["variant"] == v]
-        rate_points(ax, b["x"], b.to_dict("records"), VARIANT[v], label=v)
+        rate_points(ax, b["x"], b.to_dict("records"), VARIANT[v], label=f"{v}, binned")
     coef = read(C6 / "logistic_coefficients.csv").set_index("term")["estimate"]
     lo, hi = load_yaml(ROOT / "configs" / "disturbances.yaml")["variables"]["phi"]["bounds"]
-    gl = sd.loc[sd["variant"].isin(("G", "L"))]
     phi = np.linspace(lo, hi, 61)
     curves = []
     for s, ls in (("GP", "-"), ("GBM", ":")):
@@ -401,9 +425,11 @@ def f10(out):
                    coef["b_CO"] * gl["u_y_CO"].mean())
             ax.plot(phi, expit(eta), ls, color=VARIANT[v], lw=0.9, label=f"{v}-{s} fit")
             curves.append(pd.DataFrame(dict(panel="RQ5 logistic", variant=v, surrogate=s, x=phi, rate=expit(eta))))
-    ax.set(xlabel=r"adsorbent capacity factor $\varphi$ (-)", ylabel="rate", ylim=(-0.02, 1.02), xlim=(0.69, 1.01))
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=4, columnspacing=1.0,
-              title="symbols: z > 2, binned; lines: RQ5 fit of P(z > bound)")
+    ax.set(xlabel=r"adsorbent capacity factor $\varphi$ (-)", ylabel="miscoverage of the nominal bound",
+           ylim=(-0.02, 1.02), xlim=(0.69, 1.01))
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.17), ncol=3, columnspacing=1.0,
+              title="symbols: z > bound, binned (G, L pooled over GP, GBM); lines: RQ5 fit,\n"
+                    "S_dist intercept, y_CH4 and y_CO at their S_dist means")
     label(ax, "(a) feed / capacity disturbance (S_dist)")
     ax = axs[1]
     v7 = read(B7 / "violations.csv")
@@ -541,7 +567,8 @@ def main(argv=None):
         (args.out / d).mkdir(parents=True, exist_ok=True)
     tables = args.out / "tables"
     with plt.style.context(STYLE):
-        for name, make in (("F5", f5), ("F6", f6), ("F7", f7), ("F8", f8), ("F9", f9), ("F10", f10)):
+        for name, make in (("F5", f5), ("F6", f6), ("F7", f7), ("FS7", lambda o: f7(o, 512, "FS7_bound_vs_resimulated_n512")),
+                           ("F8", f8), ("F9", f9), ("F10", f10)):
             make(args.out).to_csv(tables / f"figure_data_{name}.csv", index=False)
     a = t1()
     a.to_csv(tables / "T1_design_space.csv", index=False)
