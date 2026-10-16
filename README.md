@@ -1,5 +1,7 @@
 # h2-psa-digital-twin
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23407489.svg)](https://doi.org/10.5281/zenodo.23407489)
+
 Open digital twin of a layered-bed (activated carbon / zeolite) hydrogen PSA unit, built only from published
 adsorption data and validated against laboratory breakthrough and PSA-cycle experiments (Lopes 2010). We use it in a
 pre-registered study of 3 357 cyclic-steady-state (CSS) simulations. The study asks whether surrogate-based
@@ -9,7 +11,7 @@ recomputes every number quoted in the paper, both from the CSVs in this reposito
 
 **Paper.** M. Sissenbay, I. Orynbassar, Y. Gilazhov. *A digital twin of a layered-bed hydrogen PSA unit: when do conformal purity
 guarantees survive surrogate-based optimisation?* Submitted to the International Journal of Hydrogen Energy, 2026.
-DOI: *to be added*.
+DOI: *to be added*. Code and data: [doi:10.5281/zenodo.23407489](https://doi.org/10.5281/zenodo.23407489).
 
 ## Key results
 
@@ -108,7 +110,7 @@ and the Step 8a scripts are committed unchanged.
 ## Data source
 
 All model parameters and validation data come from F.V.S. Lopes, *New pressure swing adsorption cycles for hydrogen
-purification from steam reforming off-gases*, PhD thesis, University of Porto, 2010, doi:10.34626/ftfe-yr63 (open
+purification from steam reforming off-gases*, PhD thesis, University of Porto, 2010, https://repositorio-aberto.up.pt/handle/10216/61875 (open
 access). Seven errata in the thesis tables (E1–E7) and their resolution are documented in `data/PROVENANCE.md`.
 The thesis PSA performance figures (81.6 % recovery, 99.98 % purity) are the author's simulations, not
 measurements. Validation uses the measured outlet flows, pressures and temperatures (Figs 5.15–5.19).
@@ -117,8 +119,8 @@ measurements. Validation uses the measured outlet flows, pressures and temperatu
 
 * Code: MIT (`LICENSE`). Data in `data/`, including the simulation results in `data/generated/`: CC BY 4.0
   (`data/LICENSE-DATA.md`).
-* Cite the paper above and this repository (`CITATION.cff`; archived on Zenodo, DOI to be added).
+* Cite the paper above and this repository (`CITATION.cff`; archived on Zenodo, doi:10.5281/zenodo.23407489).
 * Corresponding author: Madina Sissenbay (Institute of Petrochemical Engineering and Ecology named after
-  N.K. Nadirov, Safi Utebayev Atyrau University of Oil and Gas), m.sisenbay@aogu.edu.kz.
+  N.K. Nadirov, Safi Utebayev Atyrau University of Oil and Gas), m.sissenbay26@aogu.edu.kz.
   Izbassar Orynbassar (School of Information Studies, Syracuse University). Yessengaly Gilazhov (Institute of
   Petrochemical Engineering and Ecology named after N.K. Nadirov, Safi Utebayev Atyrau University of Oil and Gas).

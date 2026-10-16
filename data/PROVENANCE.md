@@ -8,7 +8,7 @@ rendered PDF pages (~580 values, 2026-10-09).
 
 | Key | Reference | Access | Used for |
 |---|---|---|---|
-| Lopes2010 | F.V.S. Lopes, *New pressure swing adsorption cycles for hydrogen purification from steam reforming off-gases*, PhD thesis, University of Porto, 2010. doi:10.34626/ftfe-yr63, hdl:10216/61875 | Open access | Isotherms, kinetics, column, PSA experiment and 17 reference simulations |
+| Lopes2010 | F.V.S. Lopes, *New pressure swing adsorption cycles for hydrogen purification from steam reforming off-gases*, PhD thesis, University of Porto, 2010. https://repositorio-aberto.up.pt/handle/10216/61875 | Open access | Isotherms, kinetics, column, PSA experiment and 17 reference simulations |
 | NETL2022 | NETL, *Comparison of Commercial, State-of-the-Art, Fossil-Based Hydrogen Production Technologies*, DOE/NETL-2022/3241, 2022 | Public | Industrial PSA feed/product/tail gas (Exhibit 3-4) |
 | Yang2008 | S. Yang et al., *Hydrogen purification by the four-bed PSA process from SMR off-gas*, KNRES autumn conf. 2008, pp. 383-386 | Open access (KoreaScience) | Layered-bed geometry, cycle, experimental trends |
 | NIST | E.W. Lemmon et al., *Thermophysical Properties of Fluid Systems*, NIST Chemistry WebBook, SRD 69, https://webbook.nist.gov/chemistry/fluid/ (retrieved 2026-10-09) | Public | Gas heat capacities and viscosities at 5 bar, 303-383 K (`gas_properties_nist.yaml`) |
