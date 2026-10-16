@@ -118,6 +118,7 @@ measurements. Validation uses the measured outlet flows, pressures and temperatu
 * Code: MIT (`LICENSE`). Data in `data/`, including the simulation results in `data/generated/`: CC BY 4.0
   (`data/LICENSE-DATA.md`).
 * Cite the paper above and this repository (`CITATION.cff`; archived on Zenodo, DOI to be added).
-* Corresponding author: Madina Sissenbay (Safi Utebayev Atyrau University of Oil and Gas), m.sisenbay@aogu.edu.kz.
+* Corresponding author: Madina Sissenbay (Institute of Petrochemical Engineering and Ecology named after
+  N.K. Nadirov, Safi Utebayev Atyrau University of Oil and Gas), m.sisenbay@aogu.edu.kz.
   Izbassar Orynbassar (School of Information Studies, Syracuse University). Yessengaly Gilazhov (Institute of
   Petrochemical Engineering and Ecology named after N.K. Nadirov, Safi Utebayev Atyrau University of Oil and Gas).
