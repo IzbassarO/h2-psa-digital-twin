@@ -12,3 +12,8 @@ __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 docs/*.pdf
+overleaf_figures/
+venv/
+*.log
+*.tmp
+CLAUDE.md

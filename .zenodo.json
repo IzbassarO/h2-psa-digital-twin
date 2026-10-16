@@ -1,0 +1,22 @@
+{
+  "title": "h2-psa-digital-twin: open digital twin of a layered-bed H2 PSA unit with conformal purity guarantees",
+  "upload_type": "software",
+  "version": "1.0.0",
+  "creators": [
+    {"name": "Sissenbay, Madina", "affiliation": "Safi Utebayev Atyrau University of Oil and Gas, Atyrau, Kazakhstan", "orcid": "0009-0009-8160-7472"},
+    {"name": "Orynbassar, Izbassar", "affiliation": "School of Information Studies, Syracuse University, Syracuse, NY, USA", "orcid": "0009-0002-4224-3249"},
+    {"name": "Gilazhov, Yessengaly", "affiliation": "Institute of Petrochemical Engineering and Ecology named after N.K. Nadirov, Safi Utebayev Atyrau University of Oil and Gas, Atyrau, Kazakhstan", "orcid": "0000-0003-3046-4845"}
+  ],
+  "description": "Code and data of the paper 'A digital twin of a layered-bed hydrogen PSA unit: when do conformal purity guarantees survive surrogate-based optimisation?' (submitted to the International Journal of Hydrogen Energy, 2026). A dynamic model of a layered-bed (activated carbon / zeolite) H2 PSA unit built from published adsorption data (Lopes 2010) and validated against laboratory breakthrough and cycle experiments; 3357 cyclic-steady-state simulations of a pre-registered study testing whether conformal prediction bounds keep a 99.99 % H2 purity specification on optimiser-selected operating points. One command regenerates every figure and every number quoted in the paper from the included CSVs. Code: MIT. Data in data/: CC BY 4.0.",
+  "license": "MIT",
+  "keywords": [
+    "hydrogen purification",
+    "pressure swing adsorption",
+    "digital twin",
+    "conformal prediction",
+    "surrogate-based optimization"
+  ],
+  "related_identifiers": [
+    {"identifier": "10.34626/ftfe-yr63", "relation": "references", "scheme": "doi"}
+  ]
+}

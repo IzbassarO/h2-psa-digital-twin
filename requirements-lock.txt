@@ -1,0 +1,44 @@
+# Exact environment of the paper's results: Python 3.14.7, macOS 26 (Apple M1 Pro).
+# pip freeze of the project venv, trimmed to the packages the code imports and their dependencies
+# (pymupdf, used only by scripts/digitize_lopes2010.py on the non-redistributed thesis PDF, is left out).
+# Install:  pip install -r requirements-lock.txt && pip install --no-deps -e .
+about-time==4.2.1
+alive-progress==3.3.0
+autograd==1.9.1
+cffi==2.1.1
+cloudpickle==3.1.2
+cma==4.5.0
+contourpy==1.4.0
+cycler==0.12.1
+Deprecated==3.0.0
+fonttools==4.66.1
+formulaic==1.2.2
+graphemeu==0.7.2
+iniconfig==2.3.1
+interface_meta==2.0.1
+joblib==1.6.0
+kiwisolver==1.5.1
+matplotlib==3.11.2
+moocore==0.3.2
+narwhals==2.27.1
+numpy==2.5.3
+packaging==26.3
+pandas==3.0.6
+patsy==1.0.3
+pillow==12.3.0
+platformdirs==4.13.0
+pluggy==1.6.0
+pycparser==3.11
+Pygments==2.21.0
+pymoo==0.6.2
+pyparsing==3.3.3
+pytest==9.1.1
+python-dateutil==2.9.0.post0
+PyYAML==6.0.3
+scikit-learn==1.9.1
+scipy==1.18.1
+six==1.17.0
+statsmodels==0.15.0
+threadpoolctl==3.7.0
+typing_extensions==4.16.0
+wrapt==2.5.1rc1

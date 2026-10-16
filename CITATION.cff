@@ -1,0 +1,46 @@
+cff-version: 1.2.0
+message: "If you use this software or data, please cite the paper below and this repository."
+title: "h2-psa-digital-twin: open digital twin of a layered-bed H2 PSA unit with conformal purity guarantees"
+version: 1.0.0
+# date-released: YYYY-MM-DD   # TODO: set on the Zenodo release
+license: MIT
+repository-code: "https://github.com/IzbassarO/h2-psa-digital-twin"
+authors:
+  - family-names: Sissenbay
+    given-names: Madina
+    affiliation: "Safi Utebayev Atyrau University of Oil and Gas, Atyrau, Kazakhstan"
+    email: m.sisenbay@aogu.edu.kz
+    orcid: "https://orcid.org/0009-0009-8160-7472"
+  - family-names: Orynbassar
+    given-names: Izbassar
+    affiliation: "School of Information Studies, Syracuse University, Syracuse, NY, USA"
+    orcid: "https://orcid.org/0009-0002-4224-3249"
+  - family-names: Gilazhov
+    given-names: Yessengaly
+    affiliation: "Institute of Petrochemical Engineering and Ecology named after N.K. Nadirov, Safi Utebayev Atyrau University of Oil and Gas, Atyrau, Kazakhstan"
+    orcid: "https://orcid.org/0000-0003-3046-4845"
+keywords:
+  - hydrogen purification
+  - pressure swing adsorption
+  - digital twin
+  - conformal prediction
+  - surrogate-based optimization
+preferred-citation:
+  type: article
+  title: "A digital twin of a layered-bed hydrogen PSA unit: when do conformal purity guarantees survive surrogate-based optimisation?"
+  authors:
+    - family-names: Sissenbay
+      given-names: Madina
+      affiliation: "Safi Utebayev Atyrau University of Oil and Gas, Atyrau, Kazakhstan"
+      orcid: "https://orcid.org/0009-0009-8160-7472"
+    - family-names: Orynbassar
+      given-names: Izbassar
+      affiliation: "School of Information Studies, Syracuse University, Syracuse, NY, USA"
+      orcid: "https://orcid.org/0009-0002-4224-3249"
+    - family-names: Gilazhov
+      given-names: Yessengaly
+      affiliation: "Institute of Petrochemical Engineering and Ecology named after N.K. Nadirov, Safi Utebayev Atyrau University of Oil and Gas, Atyrau, Kazakhstan"
+      orcid: "https://orcid.org/0000-0003-3046-4845"
+  journal: "International Journal of Hydrogen Energy"
+  year: 2026
+  notes: "Submitted. DOI to be added on acceptance."
